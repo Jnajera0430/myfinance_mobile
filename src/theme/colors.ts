@@ -1,0 +1,26 @@
+export const colors = {
+  light: {
+    background: '#ffffff',
+    foreground: '#0f172a',
+    primary: '#6366f1',
+    primaryForeground: '#ffffff',
+    muted: '#f1f5f9',
+    mutedForeground: '#64748b',
+    border: '#e2e8f0',
+    income: '#22c55e',
+    expenseFixed: '#ef4444',
+    expenseVariable: '#f59e0b',
+  },
+  dark: {
+    background: '#0f172a',
+    foreground: '#f8fafc',
+    primary: '#818cf8',
+    primaryForeground: '#0f172a',
+    muted: '#1e293b',
+    mutedForeground: '#94a3b8',
+    border: '#334155',
+    income: '#4ade80',
+    expenseFixed: '#f87171',
+    expenseVariable: '#fbbf24',
+  },
+};
