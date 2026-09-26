@@ -1,46 +1,55 @@
-// src/navigation/MainTabNavigator.tsx
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import DashboardScreen from '../screens/DashboardScreen';
 import ReportsScreen from '../screens/ReportsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import IncomeScreen from '../screens/IncomeScreen';
-import FixedExpensesScreen from '../screens/FixedExpensesScreen';
-import VariableExpensesScreen from '../screens/VariableExpensesScreen';
+import MovementsScreen from '../screens/MovementsScreen';
 
-const Tab = createBottomTabNavigator();
+export type MainTabParamList = {
+  Dashboard: undefined;
+  Movements: undefined;
+  Reports: undefined;
+  Settings: undefined;
+};
 
-// Mapeo de rutas web → tabs nativos:
-// /dashboard     → Tab "Inicio"
-// /income        → Tab "Ingresos"
-// /fixed-expenses + /variable-expenses → Tab "Gastos"
-// /reports       → Tab "Reportes"
-// /settings      → Tab "Ajustes"
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+const ICONS: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
+  Dashboard: 'home',
+  Movements: 'swap-vertical',
+  Reports: 'bar-chart',
+  Settings: 'settings',
+};
 
 export default function MainTabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          const icons: Record<string, string> = {
-            Dashboard: 'home',
-            Income: 'trending-up',
-            Expenses: 'cart',
-            Reports: 'bar-chart',
-            Settings: 'settings',
-          };
-          return <Ionicons name={icons[route.name] as any} size={size} color={color} />;
-        },
+        headerShown: false,
+        tabBarIcon: ({ focused, color, size }) => (
+          <Ionicons
+            name={ICONS[route.name]}
+            size={focused ? size + 2 : size}
+            color={color}
+          />
+        ),
         tabBarActiveTintColor: '#6366f1',
-        tabBarInactiveTintColor: 'gray',
+        tabBarInactiveTintColor: '#94a3b8',
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopColor: '#e2e8f0',
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       })}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Income" component={IncomeScreen} />
-      <Tab.Screen name="Expenses" component={FixedExpensesScreen} />
-      <Tab.Screen name="VariableExpenses" component={VariableExpensesScreen} />
-      <Tab.Screen name="Reports" component={ReportsScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ tabBarLabel: 'Inicio' }} />
+      <Tab.Screen
+        name="Movements"
+        component={MovementsScreen}
+        options={{ tabBarLabel: 'Movimientos' }}
+      />
+      <Tab.Screen name="Reports" component={ReportsScreen} options={{ tabBarLabel: 'Reportes' }} />
+      <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarLabel: 'Ajustes' }} />
     </Tab.Navigator>
   );
 }

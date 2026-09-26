@@ -1,143 +1,107 @@
 import { View, Text } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { CalendarDays, Wallet, TrendingUp, Sparkles } from 'lucide-react-native';
-import { differenceInDays, addMonths, setDate } from 'date-fns';
-import { useFinance } from '../../contexts/FinanceContext';
+import { Wallet, CalendarDays, TrendingUp, Sparkles } from 'lucide-react-native';
+import { useFinance } from '../../contexts/FinanceContext.graphql';
 import { usePrivacy } from '../../contexts/PrivacyContext';
-// import { useAuth } from '../../contexts/AuthContext';
 import { cn } from '../../lib/utils';
 
 const DailySpendingCapacity = () => {
   const { summary, payday } = useFinance();
-//   const { summary: summaryLocal, payday: paydayLocal } = useFinanceLocal();
-//   const { isDemo } = useAuth();
   const { formatAmount, isIncognito } = usePrivacy();
 
-  // Calculate days remaining until payday or end of month
   const today = new Date();
   const currentDay = today.getDate();
-//   const paydayToUse = isDemo ? paydayLocal : payday;
-  const paydayToUse = payday;
 
-  let nextPayday: Date;
-  if (currentDay >= paydayToUse) {
-    // Next payday is in the next month
-    nextPayday = setDate(addMonths(today, 1), paydayToUse);
-  } else {
-    // Next payday is this month
-    nextPayday = setDate(today, paydayToUse);
-  }
+  // Ciclo entre pagos: dias que faltan para el proximo dia de pago
+  const daysInCycle = payday > 0 ? payday : 15;
+  const daysRemaining = currentDay <= daysInCycle
+    ? daysInCycle - currentDay + 1
+    : Math.max(1, 30 - currentDay + daysInCycle);
 
-  const daysRemaining = Math.max(1, differenceInDays(nextPayday, today));
-
-  // Calculate daily spending capacity
-//   const remainingBalance = isDemo ? summaryLocal.totalBalance : summary.totalBalance;
   const remainingBalance = summary.totalBalance;
   const dailyCapacity = remainingBalance > 0 ? remainingBalance / daysRemaining : 0;
 
-  // Determine status based on daily capacity
+  // Referencia relativa a los ingresos, no a un monto fijo:
+  // asi el estado tiene sentido en COP, USD o MXN.
+  const dailyIncomeReference =
+    summary.totalIncome > 0 ? summary.totalIncome / Math.max(daysInCycle, 1) : 0;
+
+  const ratio = dailyIncomeReference > 0 ? dailyCapacity / dailyIncomeReference : 0;
+
   const getStatus = () => {
-    if (dailyCapacity >= 500) {
-      return {
-        emoji: '🎉',
-        message: '¡Excelente! Tienes buen margen',
-        color: 'text-income',
-        bgColor: 'bg-income/20',
-      };
-    } else if (dailyCapacity >= 200) {
-      return {
-        emoji: '👍',
-        message: 'Vas bien, sigue así',
-        color: 'text-primary',
-        bgColor: 'bg-primary/20',
-      };
-    } else if (dailyCapacity >= 100) {
-      return {
-        emoji: '🤔',
-        message: 'Ajustado, pero manejable',
-        color: 'text-expense-variable',
-        bgColor: 'bg-expense-variable/20',
-      };
-    } else if (dailyCapacity > 0) {
-      return {
-        emoji: '😰',
-        message: 'Cuidado con tus gastos',
-        color: 'text-expense-fixed',
-        bgColor: 'bg-expense-fixed/20',
-      };
-    } else {
-      return {
-        emoji: '🔴',
-        message: 'Sin presupuesto disponible',
-        color: 'text-destructive',
-        bgColor: 'bg-destructive/20',
-      };
+    if (dailyCapacity <= 0) {
+      return { emoji: '🔴', message: 'Sin saldo disponible para el resto del ciclo', hex: '#ef4444', bg: 'bg-destructive/15' };
     }
+    if (ratio >= 1.2) {
+      return { emoji: '🎉', message: 'Tienes margen de sobra para ahorrar', hex: '#22c55e', bg: 'bg-income/15' };
+    }
+    if (ratio >= 0.8) {
+      return { emoji: '👍', message: 'Vas balanceado, sigue así', hex: '#6366f1', bg: 'bg-primary/15' };
+    }
+    if (ratio >= 0.4) {
+      return { emoji: '🤔', message: 'Ajustado: cuida los gastos variables', hex: '#f59e0b', bg: 'bg-expense-variable/15' };
+    }
+    return { emoji: '😰', message: 'Muy apretado para llegar al próximo pago', hex: '#ef4444', bg: 'bg-expense-fixed/15' };
   };
 
   const status = getStatus();
+  const hasData = summary.totalIncome > 0 || summary.totalExpenses > 0;
+
+  if (!hasData) {
+    return (
+      <View className="rounded-3xl border border-border bg-card p-5">
+        <Text className="text-base font-semibold text-foreground">Capacidad de gasto diario</Text>
+        <Text className="text-sm text-muted-foreground mt-1">
+          Registra tu ingreso y tus gastos: te diremos cuánto puedes usar cada día sin sustos.
+        </Text>
+      </View>
+    );
+  }
 
   return (
-    <View className="bg-card rounded-2xl overflow-hidden shadow-sm border border-border relative">
-      {/* PRO badge - absolute positioned */}
-      <View className="absolute top-3 right-3 z-10">
-        <LinearGradient
-          colors={['rgba(99,102,241,0.2)', 'rgba(168,85,247,0.2)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          className="flex-row items-center gap-1 px-2 py-0.5 rounded-full border border-primary/20"
-        >
+    <View className="rounded-3xl border border-border bg-card p-5">
+      <View className="flex-row items-center justify-between mb-4">
+        <Text className="text-base font-semibold text-foreground">Capacidad de gasto diario</Text>
+        <View className="flex-row items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1">
           <Sparkles size={12} color="#6366f1" />
-          <Text className="text-xs font-medium text-primary">PRO</Text>
-        </LinearGradient>
+          <Text className="text-[10px] font-bold text-primary">PRO</Text>
+        </View>
       </View>
 
-      <View className="p-5">
-        <View className="flex-row items-start gap-4">
-          <View className={cn('p-3 rounded-2xl', status.bgColor)}>
-            <Wallet size={24} className={status.color} />
-          </View>
+      <View className="flex-row items-start gap-4">
+        <View className={cn('w-12 h-12 rounded-2xl items-center justify-center', status.bg)}>
+          <Wallet size={22} color={status.hex} />
+        </View>
 
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-muted-foreground mb-1">
-              Capacidad de Gasto Diario
+        <View className="flex-1">
+          <View className="flex-row items-baseline gap-2">
+            <Text className="text-2xl font-bold" style={{ color: status.hex }}>
+              {formatAmount(dailyCapacity)}
             </Text>
+            <Text className="text-sm text-muted-foreground">por día {status.emoji}</Text>
+          </View>
+          <Text className="text-sm text-muted-foreground mt-1">{status.message}</Text>
 
-            <View className="flex-row items-baseline gap-2 mb-2">
-              <Text className={cn('text-3xl font-bold hide-amount', status.color)}>
-                {formatAmount(dailyCapacity)}
-              </Text>
-              <Text className="text-sm text-muted-foreground">por día</Text>
-              <Text className="text-2xl ml-1">{status.emoji}</Text>
+          <View className="flex-row gap-5 mt-4 pt-4 border-t border-border">
+            <View className="flex-row items-center gap-2 flex-1">
+              <CalendarDays size={16} color="#64748b" />
+              <View>
+                <Text className="text-[10px] text-muted-foreground">Días restantes</Text>
+                <Text className="text-sm font-semibold text-foreground">
+                  {isIncognito ? '••' : daysRemaining}
+                </Text>
+              </View>
             </View>
 
-            <Text className="text-sm text-muted-foreground mb-4">{status.message}</Text>
-
-            {/* Stats row */}
-            <View className="flex-row items-center gap-6 pt-4 border-t border-border/50">
-              <View className="flex-row items-center gap-2">
-                <CalendarDays size={16} className="text-muted-foreground" />
-                <View>
-                  <Text className="text-xs text-muted-foreground">Días restantes</Text>
-                  <Text className="font-semibold text-foreground">
-                    {isIncognito ? '**' : daysRemaining}
-                  </Text>
-                </View>
-              </View>
-
-              <View className="flex-row items-center gap-2">
-                <TrendingUp size={16} className="text-muted-foreground" />
-                <View>
-                  <Text className="text-xs text-muted-foreground">Saldo disponible</Text>
-                  <Text
-                    className={cn(
-                      'font-semibold hide-amount',
-                      remainingBalance >= 0 ? 'text-income' : 'text-expense-fixed'
-                    )}
-                  >
-                    {formatAmount(remainingBalance)}
-                  </Text>
-                </View>
+            <View className="flex-row items-center gap-2 flex-1">
+              <TrendingUp size={16} color="#64748b" />
+              <View>
+                <Text className="text-[10px] text-muted-foreground">Saldo del ciclo</Text>
+                <Text
+                  className="text-sm font-semibold"
+                  style={{ color: remainingBalance >= 0 ? '#22c55e' : '#ef4444' }}
+                >
+                  {formatAmount(remainingBalance)}
+                </Text>
               </View>
             </View>
           </View>

@@ -1,27 +1,50 @@
-import { User } from "../contexts/AuthContext";
+import type { User } from '../contexts/AuthContext';
 
-// Enums aligned with NestJS TypePaymentMethods & PaymentStatus enums
-export type PaymentMethod = 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'BANK_TRANSFER' | 'PAYMENT_GATEWAY' | 'PAYMENT_WHATSAPP';
-export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'REJECTED' | 'EXPIRED';
+// Enums alineados con TypePaymentMethods / PaymentStatus / TokenStatus del backend
+export type PaymentMethod =
+  | 'CASH'
+  | 'CREDIT_CARD'
+  | 'DEBIT_CARD'
+  | 'BANK_TRANSFER'
+  | 'PAYMENT_GATEWAY'
+  | 'PAYMENT_WHATSAPP';
+
+export type PaymentStatus =
+  | 'PENDING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'REFUNDED'
+  | 'REJECTED'
+  | 'EXPIRED';
+
+export const PAYMENT_STATUS_VALUES: PaymentStatus[] = [
+  'PENDING',
+  'COMPLETED',
+  'FAILED',
+  'REFUNDED',
+  'REJECTED',
+  'EXPIRED',
+];
+
+/** Alias de compatibilidad para codigo heredado del panel web. */
 export enum PaymentStatusEnum {
   Pending = 'PENDING',
   Completed = 'COMPLETED',
+  Failed = 'FAILED',
+  Refunded = 'REFUNDED',
   Rejected = 'REJECTED',
   Expired = 'EXPIRED',
 }
-export type TokenStatus = 'ACTIVE' | 'USED' | 'EXPIRED';
 
-// Aligned with Service entity (isActive handled server-side)
+export type TokenStatus = 'ACTIVE' | 'USED' | 'EXPIRED';
 export type PaymentCurrency = 'COP' | 'USD';
 
-// Aligned with Service entity (isActive handled server-side)
 export interface Service {
   id: string;
   name: string;
   description: string;
-  /** Maps to `precio` in backend entity */
   price: number;
-  /** Currency for payment (COP default) — independent of app display currency */
+  /** Moneda del cobro, independiente de la moneda de visualizacion de la app */
   paymentCurrency: PaymentCurrency;
   durationDays: number;
   features: string[];
@@ -29,54 +52,44 @@ export interface Service {
   isActive?: boolean;
 }
 
-// Aligned with Payment (Pay) entity
 export interface Payment {
   id: string;
-  /** FK → users.id */
-  user?: {
-    id: string,
-    email: string,
-    name: string
-  },
-  service?: {
-    id: string,
-    name: string,
-  }
-  /** FK → services.id */
-  
- 
+  user?: { id: string; email: string; name: string };
+  service?: { id: string; name: string; price?: number; durationDays?: number };
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  /** PayPal transaction ID or WhatsApp reference */
+  /** Referencia externa (ePayco, PayPal o id de conversacion de WhatsApp) */
   externalReference: string;
   observation: string;
-  /** true after TokensService.create() succeeds */
+  /** true despues de TokensService.create() */
   generatedToken: boolean;
-  createdAt: string;
   amount: number;
+  token?: Token | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CreatePaymentInput {
   amount: number;
   paymentMethod: PaymentMethod;
-  userEmail: string;
-  userName: string;
-  service?: Service;
-  observation?: string;
   paymentStatus?: PaymentStatus;
   serviceId: string;
+  observation?: string;
   externalReference?: string;
+  userEmail: string;
+  userName: string;
 }
 
 export interface CreatePaymentPublicInput extends CreatePaymentInput {
-  sessionId: string
+  sessionId: string;
 }
 
+/** El backend expone UpdateStatePaymentPublicInput */
 export interface UpdatePaymentPublicInput {
   sessionId: string;
   paymentId: string;
+  status: PaymentStatus;
   observation?: string;
-  status?: PaymentStatus;
 }
 
 export interface CreateServiceInput {
@@ -86,6 +99,7 @@ export interface CreateServiceInput {
   durationDays: number;
   features: string[];
   highlighted?: boolean;
+  paymentCurrency?: PaymentCurrency;
 }
 
 export interface UpdateServiceInput {
@@ -96,21 +110,18 @@ export interface UpdateServiceInput {
   features?: string[];
   highlighted?: boolean;
   isActive?: boolean;
+  paymentCurrency?: PaymentCurrency;
 }
 
-// Aligned with Token entity — token is a signed JWT
+/** El token es un JWT firmado (HS256) con { userId, serviceId, expiresIn } */
 export interface Token {
   id: string;
-  /** Signed JWT (HS256) with { userId, serviceId, expiresIn } */
   token: string;
-  /** FK → users.id */
   user?: User;
-  /** FK → services.id */
-  service?: Omit<Service, 'id'>
-  /** FK → payments.id — OneToOne relationship */
+  service?: Pick<Service, 'name' | 'description' | 'price' | 'durationDays' | 'features' | 'paymentCurrency'>;
   payment?: Payment;
   expiresAt: string;
-  createdAt: string;
+  createdAt?: string;
   isUsed: boolean;
   status: TokenStatus;
 }

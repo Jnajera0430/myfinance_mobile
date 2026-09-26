@@ -1,5 +1,6 @@
-const VariableExpensesScreen = () => {
-  return null; // Implementar pantalla de gastos variables
-};
+import MovementsScreen from './MovementsScreen';
 
-export default VariableExpensesScreen;
+/** Gastos del dia a dia: comida, transporte, entretenimiento y compras. */
+export default function VariableExpensesScreen() {
+  return <MovementsScreen initialSegment="VARIABLE_EXPENSE" />;
+}

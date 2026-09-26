@@ -1,16 +1,15 @@
-// src/components/finance/KPICard.tsx
 import { View, Text } from 'react-native';
-import { LucideIcon, TrendingUp, TrendingDown } from 'lucide-react-native';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react-native';
 import { cn } from '../../lib/utils';
-import { LinearGradient } from 'expo-linear-gradient';
 
 interface KPICardProps {
   title: string;
-  value: string | number;
+  value: string;
   change?: number;
   changeLabel?: string;
-  icon: LucideIcon;
+  icon?: React.ReactNode;
   trend?: 'up' | 'down' | 'neutral';
+  goodWhenUp?: boolean;
   className?: string;
 }
 
@@ -18,68 +17,44 @@ const KPICard = ({
   title,
   value,
   change,
-  changeLabel = 'vs last month',
-  icon: Icon,
+  changeLabel = 'vs mes anterior',
+  icon,
   trend = 'neutral',
+  goodWhenUp = true,
   className,
 }: KPICardProps) => {
-  const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : null;
+  const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
+  const positive = goodWhenUp ? (change ?? 0) >= 0 : (change ?? 0) <= 0;
+  const color = change === undefined ? '#64748b' : positive ? '#22c55e' : '#ef4444';
 
   return (
-    <LinearGradient
-      colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      className={cn(
-        'rounded-2xl overflow-hidden border border-border bg-card',
-        className
-      )}
-    >
-      <View className="p-5">
-        <View className="flex-row justify-between items-start">
-          {/* Left side: title, value, change */}
-          <View className="flex-1 mr-3">
-            <Text className="text-sm font-medium text-muted-foreground mb-1">
-              {title}
-            </Text>
-            <Text className="text-3xl font-bold text-foreground tracking-tight">
-              {value}
-            </Text>
-            {change !== undefined && (
-              <View className="flex-row items-center mt-2">
-                {TrendIcon && (
-                  <TrendIcon
-                    size={16}
-                    className={cn(
-                      trend === 'up' && 'text-success',
-                      trend === 'down' && 'text-destructive'
-                    )}
-                  />
-                )}
-                <Text
-                  className={cn(
-                    'text-sm font-medium ml-1',
-                    trend === 'up' && 'text-success',
-                    trend === 'down' && 'text-destructive',
-                    trend === 'neutral' && 'text-muted-foreground'
-                  )}
-                >
-                  {change > 0 ? '+' : ''}{change}%
-                </Text>
-                <Text className="text-sm text-muted-foreground ml-1">
-                  {changeLabel}
-                </Text>
-              </View>
-            )}
-          </View>
+    <View className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+      <View className="flex-row justify-between items-start">
+        <View className="flex-1 mr-3">
+          <Text className="text-sm text-muted-foreground mb-1" numberOfLines={1}>
+            {title}
+          </Text>
+          <Text className="text-2xl font-bold text-foreground" numberOfLines={1}>
+            {value}
+          </Text>
 
-          {/* Right side: icon */}
-          <View className="p-3 rounded-xl bg-primary/10">
-            <Icon size={24} className="text-primary" />
-          </View>
+          {change !== undefined && (
+            <View className="flex-row items-center mt-2">
+              <TrendIcon size={15} color={color} />
+              <Text className="text-sm font-semibold ml-1" style={{ color }}>
+                {change > 0 ? '+' : ''}
+                {Math.round(change)}%
+              </Text>
+              <Text className="text-xs text-muted-foreground ml-1.5" numberOfLines={1}>
+                {changeLabel}
+              </Text>
+            </View>
+          )}
         </View>
+
+        {icon && <View className="w-11 h-11 rounded-2xl bg-primary/10 items-center justify-center">{icon}</View>}
       </View>
-    </LinearGradient>
+    </View>
   );
 };
 

@@ -1,143 +1,110 @@
-// src/components/finance/QuickAddButton.tsx
-import { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Animated,
-  Easing,
-//   TouchableWithoutFeedback,
-} from 'react-native';
-import { Plus, Camera, PenLine } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { cn } from '../../lib/utils';
+import { View, Text, FlatList, Dimensions } from 'react-native';
+import { useFinanceAnalytics } from '../../hooks/useFinanceAnalytics';
+import { useFinance } from '../../contexts/FinanceContext.graphql';
+import { usePrivacy } from '../../contexts/PrivacyContext';
+import { formatAmount } from '../../lib/format';
+import { useSettings } from '../../contexts/SettingsContext';
 
-interface QuickAddButtonProps {
-  onClick?: () => void;
-  onScanClick?: () => void;
-  className?: string;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+interface Insight {
+  id: string;
+  emoji: string;
+  title: string;
+  value: string;
+  hint: string;
+  color: string;
 }
 
-const QuickAddButton = ({ onClick, onScanClick, className }: QuickAddButtonProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const animatedValue = useRef(new Animated.Value(0)).current;
+export default function QuickInsightsCarousel() {
+  const { insights, savingsRate, topCategories, projection } = useFinanceAnalytics();
+  const { summary } = useFinance();
+  const { currency, language } = useSettings();
+  const { formatAmount: maskedFormat } = usePrivacy();
 
-  useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: isExpanded ? 1 : 0,
-      duration: 300,
-      easing: Easing.bezier(0.4, 0, 0.2, 1),
-      useNativeDriver: true,
-    }).start();
-  }, [isExpanded]);
+  const items: Insight[] = [
+    {
+      id: 'balance',
+      emoji: '💼',
+      title: 'Tu balance',
+      value: maskedFormat(summary.totalBalance),
+      hint: 'Ingresos menos gastos',
+      color: '#6366f1',
+    },
+    {
+      id: 'savings',
+      emoji: '🐖',
+      title: 'Tasa de ahorro',
+      value: `${Math.round(savingsRate)}%`,
+      hint: savingsRate >= 10 ? 'Vas mejor que el promedio' : 'Intenta llegar al 10%',
+      color: savingsRate >= 10 ? '#22c55e' : '#f59e0b',
+    },
+    {
+      id: 'top',
+      emoji: '📌',
+      title: 'Mayor gasto',
+      value: topCategories[0]?.label ?? 'Sin datos',
+      hint: topCategories[0]
+        ? `${formatAmount(topCategories[0].amount, currency, language)} este mes`
+        : 'Aún no registras gastos',
+      color: '#ef4444',
+    },
+    {
+      id: 'projection',
+      emoji: '🔮',
+      title: 'Cierre de mes',
+      value: formatAmount(projection.projectedBalance, currency, language),
+      hint: `Faltan ${projection.daysRemaining} días`,
+      color: projection.isPositive ? '#22c55e' : '#ef4444',
+    },
+  ];
 
-  const handleMainPress = () => {
-    setIsExpanded(!isExpanded);
-  };
-
-  const handleManualPress = () => {
-    setIsExpanded(false);
-    onClick?.();
-  };
-
-  const handleScanPress = () => {
-    setIsExpanded(false);
-    onScanClick?.();
-  };
-
-  // Animations
-  const translateY = animatedValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [20, 0],
-  });
-  const opacity = animatedValue;
+  const smartInsight = insights[0];
 
   return (
-    <View className={cn('absolute bottom-6 right-4 z-50', className)}>
-      {/* Expanded options */}
-      <>
-        {/* Scan option */}
-        <Animated.View
-          style={{
-            opacity,
-            transform: [{ translateY }],
-          }}
-          className="absolute bottom-16 right-0 mb-2"
-        >
-          <View className="flex-row items-center gap-2">
-            <View className="px-3 py-1.5 rounded-full bg-white shadow-lg">
-              <Text className="text-sm font-medium text-gray-800">
-                Escanear ticket <Camera size={16} color="#1f2937" />
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={handleScanPress}
-              activeOpacity={0.7}
-              className="w-12 h-12 rounded-full bg-white shadow-lg items-center justify-center"
-            >
-              <Camera size={20} color="#1f2937" />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-
-        {/* Manual option */}
-        <Animated.View
-          style={{
-            opacity,
-            transform: [{ translateY: animatedValue.interpolate({
-              inputRange: [0, 1],
-              outputRange: [40, 0],
-            }) }],
-          }}
-          className="absolute bottom-28 right-0"
-        >
-          <View className="flex-row items-center gap-2">
-            <View className="px-3 py-1.5 rounded-full bg-white shadow-lg">
-              <Text className="text-sm font-medium text-gray-800">
-                Agregar manual <PenLine size={16} color="#1f2937" />
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={handleManualPress}
-              activeOpacity={0.7}
-              className="w-12 h-12 rounded-full bg-white shadow-lg items-center justify-center"
-            >
-              <PenLine size={20} color="#1f2937" />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </>
-
-      {/* Main FAB button */}
-      <TouchableOpacity
-        onPress={handleMainPress}
-        activeOpacity={0.8}
-        className="w-14 h-14 rounded-full shadow-lg shadow-income/30"
-      >
-        <LinearGradient
-          colors={['#22c55e', '#3b82f6']} // from-income to-primary
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          className="w-full h-full rounded-full items-center justify-center"
-        >
-          <Animated.View
+    <View>
+      <FlatList
+        horizontal
+        data={items}
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={SCREEN_WIDTH * 0.72}
+        decelerationRate="fast"
+        keyExtractor={(item) => item.id}
+        renderItem={({ item, index }) => (
+          <View
             style={{
-              transform: [
-                {
-                  rotate: animatedValue.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '45deg'],
-                  }),
-                },
-              ],
+              width: SCREEN_WIDTH * 0.66,
+              marginLeft: index === 0 ? 0 : 12,
+              borderColor: `${item.color}33`,
             }}
+            className="rounded-3xl border bg-card p-4"
           >
-            <Plus size={28} color="white" />
-          </Animated.View>
-        </LinearGradient>
-      </TouchableOpacity>
+            <Text className="text-2xl">{item.emoji}</Text>
+            <Text className="text-xs text-muted-foreground mt-2" numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text
+              className="text-lg font-bold mt-0.5"
+              style={{ color: item.color }}
+              numberOfLines={1}
+            >
+              {item.value}
+            </Text>
+            <Text className="text-[11px] text-muted-foreground mt-1" numberOfLines={2}>
+              {item.hint}
+            </Text>
+          </View>
+        )}
+      />
+
+      {!!smartInsight && (
+        <View className="mt-3 rounded-2xl bg-secondary px-4 py-3 flex-row items-center">
+          <Text className="text-base mr-2">💡</Text>
+          <Text className="text-xs text-secondary-foreground flex-1" numberOfLines={2}>
+            {smartInsight}
+          </Text>
+        </View>
+      )}
     </View>
   );
-};
-
-export default QuickAddButton;
+}

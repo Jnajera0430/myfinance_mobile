@@ -1,253 +1,232 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import type { ErrorLike } from '@apollo/client';
 import { useSettingsGraphQL } from '@/hooks/useSettingsGraphQL';
-import { ErrorLike } from '@apollo/client';
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
-import { useAuth } from './AuthContext.graphql';
+import {
+  DEFAULT_CURRENCY,
+  DEFAULT_LANGUAGE,
+  formatAmount as formatWithCurrency,
+  getCurrencyInfo,
+  type CurrencyInfo,
+} from '@/lib/format';
+import { CURRENCIES, LANGUAGES } from '@/lib/format';
+import type { Currency, Language } from '@/graphql/types';
+import { useQuery } from '@apollo/client/react';
+import { EXCHANGE_RATES_QUERY } from '@/graphql/operations';
+import type { ExchangeRate } from '@/graphql/types';
 
-export type Language = 'es' | 'en';
-export type Currency = 'MXN' | 'USD' | 'EUR' | 'COP' | 'ARS' | 'CLP' | 'PEN';
-
-interface CurrencyInfo {
-  code: Currency;
-  name: string;
-  symbol: string;
-  locale: string;
-}
-
-export const CURRENCIES: CurrencyInfo[] = [
-  { code: 'MXN', name: 'Peso Mexicano', symbol: '$', locale: 'es-MX' },
-  { code: 'USD', name: 'Dólar Estadounidense', symbol: '$', locale: 'en-US' },
-  { code: 'EUR', name: 'Euro', symbol: '€', locale: 'de-DE' },
-  { code: 'COP', name: 'Peso Colombiano', symbol: '$', locale: 'es-CO' },
-  { code: 'ARS', name: 'Peso Argentino', symbol: '$', locale: 'es-AR' },
-  { code: 'CLP', name: 'Peso Chileno', symbol: '$', locale: 'es-CL' },
-  { code: 'PEN', name: 'Sol Peruano', symbol: 'S/', locale: 'es-PE' },
-];
-
-interface LanguageInfo {
-  code: Language;
-  name: string;
-  flag: string;
-}
-
-export const LANGUAGES: LanguageInfo[] = [
-  { code: 'es', name: 'Español', flag: '🇪🇸' },
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-];
+export type { Currency, Language, CurrencyInfo };
+export { CURRENCIES, LANGUAGES };
 
 interface ExchangeRates {
-  [key: string]: number;
+  [code: string]: number;
 }
+
+/** Respaldo estatico cuando el backend aun no tiene tasas sincronizadas. */
+const FALLBACK_RATES: ExchangeRates = {
+  USD: 1,
+  EUR: 0.92,
+  MXN: 17.15,
+  COP: 3950,
+  ARS: 870,
+  CLP: 880,
+  PEN: 3.72,
+};
 
 interface SettingsContextType {
   language: Language;
-  setLanguage: (lang: Language) => void;
+  setLanguage: (lang: Language) => Promise<void>;
   currency: Currency;
-  setCurrency: (currency: Currency) => void;
+  setCurrency: (currency: Currency) => Promise<void>;
+  darkMode: boolean;
+  setDarkMode: (value: boolean) => Promise<void>;
+  payday: number;
   exchangeRates: ExchangeRates;
   isLoadingRates: boolean;
   formatCurrency: (amount: number) => string;
   convertAmount: (amount: number, fromCurrency: Currency, toCurrency: Currency) => number;
-  getCurrencyInfo: (code: Currency) => CurrencyInfo | undefined;
+  getCurrencyInfo: (code?: string | null) => CurrencyInfo;
   t: (key: string) => string;
   isLoadingSettings: boolean;
-  settingsError: ErrorLike;
+  settingsError: ErrorLike | null;
 }
 
-const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
-
-const SETTINGS_STORAGE_KEY = 'app_settings';
-
-// Translations
 const translations: Record<Language, Record<string, string>> = {
   es: {
     'settings.title': 'Ajustes',
     'settings.language': 'Idioma',
     'settings.currency': 'Moneda',
-    'settings.languageDescription': 'Selecciona el idioma de la aplicación',
-    'settings.currencyDescription': 'Selecciona la moneda para mostrar tus finanzas',
+    'settings.payday': 'Día de pago',
+    'settings.appearance': 'Apariencia',
+    'settings.darkMode': 'Modo oscuro',
+    'settings.privacy': 'Privacidad',
+    'settings.hideAmounts': 'Ocultar montos',
+    'settings.account': 'Cuenta',
+    'settings.logout': 'Cerrar sesión',
     'settings.exchangeRates': 'Tasas de cambio',
-    'settings.exchangeRatesDescription': 'Tasas actualizadas automáticamente',
     'settings.lastUpdate': 'Última actualización',
-    'settings.preferences': 'Preferencias',
-    'settings.regional': 'Regional',
     'common.loading': 'Cargando...',
     'common.save': 'Guardar',
     'common.cancel': 'Cancelar',
-    'dashboard.greeting.morning': '¡Buenos días! ☀️',
-    'dashboard.greeting.afternoon': '¡Buenas tardes! 🌤️',
-    'dashboard.greeting.evening': '¡Buenas noches! 🌙',
+    'common.retry': 'Reintentar',
+    'dashboard.greeting.morning': '¡Buenos días!',
+    'dashboard.greeting.afternoon': '¡Buenas tardes!',
+    'dashboard.greeting.evening': '¡Buenas noches!',
     'dashboard.question': '¿Cómo van tus finanzas hoy?',
   },
   en: {
     'settings.title': 'Settings',
     'settings.language': 'Language',
     'settings.currency': 'Currency',
-    'settings.languageDescription': 'Select the application language',
-    'settings.currencyDescription': 'Select the currency to display your finances',
-    'settings.exchangeRates': 'Exchange Rates',
-    'settings.exchangeRatesDescription': 'Rates updated automatically',
+    'settings.payday': 'Payday',
+    'settings.appearance': 'Appearance',
+    'settings.darkMode': 'Dark mode',
+    'settings.privacy': 'Privacy',
+    'settings.hideAmounts': 'Hide amounts',
+    'settings.account': 'Account',
+    'settings.logout': 'Sign out',
+    'settings.exchangeRates': 'Exchange rates',
     'settings.lastUpdate': 'Last update',
-    'settings.preferences': 'Preferences',
-    'settings.regional': 'Regional',
     'common.loading': 'Loading...',
     'common.save': 'Save',
     'common.cancel': 'Cancel',
-    'dashboard.greeting.morning': 'Good morning! ☀️',
-    'dashboard.greeting.afternoon': 'Good afternoon! 🌤️',
-    'dashboard.greeting.evening': 'Good evening! 🌙',
+    'common.retry': 'Retry',
+    'dashboard.greeting.morning': 'Good morning!',
+    'dashboard.greeting.afternoon': 'Good afternoon!',
+    'dashboard.greeting.evening': 'Good evening!',
     'dashboard.question': 'How are your finances today?',
   },
 };
 
+const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const { isDemo } = useAuth();
   const {
-    settings: graphqlSettings,
+    settings,
     isLoading: isLoadingGraphQL,
     error: graphqlError,
-    updateLanguage: updateLanguageGraphQL,
-    updateCurrency: updateCurrencyGraphQL,
+    updateLanguage,
+    updateCurrency,
+    updateDarkMode,
   } = useSettingsGraphQL();
-  const [language, setLanguageState] = useState<Language>('es');
 
-  const [currency, setCurrencyState] = useState<Currency>('COP');
+  const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
+  const [currency, setCurrencyState] = useState<Currency>(DEFAULT_CURRENCY);
+  const [darkMode, setDarkModeState] = useState(false);
 
-  const [exchangeRates, setExchangeRates] = useState<ExchangeRates>({});
-  const [isLoadingRates, setIsLoadingRates] = useState(false);
-
-  useEffect(() => {
-    if (graphqlSettings) {
-      if (graphqlSettings.language) {
-        setLanguageState(graphqlSettings.language as Language);
-      }
-      if (graphqlSettings.currency) {
-        setCurrencyState(graphqlSettings.currency as Currency);
-      }
-    }
-  }, [graphqlSettings]);
-
-  // Fetch exchange rates from frankfurter.app (free API)
-  const fetchExchangeRates = useCallback(async () => {
-    setIsLoadingRates(true);
-    try {
-      const response = await fetch('https://api.frankfurter.app/latest?from=USD');
-      if (response.ok) {
-        const data = await response.json();
-        setExchangeRates({ USD: 1, ...data.rates });
-      }
-    } catch (error) {
-      console.error('Error fetching exchange rates:', error);
-      // Fallback rates
-      setExchangeRates({
-        USD: 1,
-        EUR: 0.92,
-        MXN: 17.15,
-        COP: 3950,
-        ARS: 870,
-        CLP: 880,
-        PEN: 3.72,
-      });
-    } finally {
-      setIsLoadingRates(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchExchangeRates();
-    // Refresh rates every hour
-    const interval = setInterval(fetchExchangeRates, 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchExchangeRates]);
-
-  // Save settings to localStorage
-  useEffect(() => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ language, currency }));
-  }, [language, currency]);
-
-  const setLanguage = useCallback(async (lang: Language) => {
-    try {
-      setLanguageState(lang);
-      if (!isDemo) {
-        await updateLanguageGraphQL(lang);
-      }
-    } catch (error) {
-      console.error('Failed to update language:', error);
-      // Podrías revertir el estado local si falla
-      throw error;
-    }
-  }, [updateLanguageGraphQL]);
-
-  const setCurrency = useCallback(async (curr: Currency) => {
-    try {
-      setCurrencyState(curr);
-      if (!isDemo) {
-        await updateCurrencyGraphQL(curr);
-      }
-    } catch (error) {
-      console.error('Failed to update currency:', error);
-      throw error;
-    }
-  }, [updateCurrencyGraphQL]);
-
-  const getCurrencyInfo = useCallback((code: Currency): CurrencyInfo | undefined => {
-    return CURRENCIES.find(c => c.code === code);
-  }, []);
-
-  const formatCurrency = useCallback((amount: number): string => {
-    const currencyInfo = getCurrencyInfo(currency);
-    if (!currencyInfo) {
-      return `$${amount.toFixed(2)}`;
-    }
-
-    return new Intl.NumberFormat(currencyInfo.locale, {
-      style: 'currency',
-      currency: currencyInfo.code,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  }, [currency, getCurrencyInfo]);
-
-  const convertAmount = useCallback((amount: number, fromCurrency: Currency, toCurrency: Currency): number => {
-    if (fromCurrency === toCurrency) return amount;
-
-    const fromRate = exchangeRates[fromCurrency] || 1;
-    const toRate = exchangeRates[toCurrency] || 1;
-
-    // Convert to USD first, then to target currency
-    const amountInUSD = amount / fromRate;
-    return amountInUSD * toRate;
-  }, [exchangeRates]);
-
-  const t = useCallback((key: string): string => {
-    return translations[language][key] || key;
-  }, [language]);
-
-  return (
-    <SettingsContext.Provider
-      value={{
-        language,
-        setLanguage,
-        currency,
-        setCurrency,
-        exchangeRates,
-        isLoadingRates,
-        formatCurrency,
-        convertAmount,
-        getCurrencyInfo,
-        t,
-        isLoadingSettings: isLoadingGraphQL,
-        settingsError: graphqlError,
-      }}
-    >
-      {children}
-    </SettingsContext.Provider>
+  const { data: ratesData, loading: isLoadingRates } = useQuery<{ exchangeRates: ExchangeRate[] }>(
+    EXCHANGE_RATES_QUERY,
+    { fetchPolicy: 'cache-and-network', errorPolicy: 'all' },
   );
+
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.language) setLanguageState(settings.language as Language);
+    if (settings.currency) setCurrencyState(settings.currency as Currency);
+    setDarkModeState(!!settings.darkMode);
+  }, [settings]);
+
+  const exchangeRates = useMemo<ExchangeRates>(() => {
+    const rates: ExchangeRates = { ...FALLBACK_RATES };
+
+    for (const row of ratesData?.exchangeRates ?? []) {
+      if (row.baseCurrency === 'USD') {
+        rates[row.targetCurrency] = Number(row.rate);
+      }
+    }
+
+    return rates;
+  }, [ratesData]);
+
+  const setLanguage = useCallback(
+    async (lang: Language) => {
+      setLanguageState(lang);
+      await updateLanguage(lang);
+    },
+    [updateLanguage],
+  );
+
+  const setCurrency = useCallback(
+    async (curr: Currency) => {
+      setCurrencyState(curr);
+      await updateCurrency(curr);
+    },
+    [updateCurrency],
+  );
+
+  const setDarkMode = useCallback(
+    async (value: boolean) => {
+      setDarkModeState(value);
+      await updateDarkMode(value);
+    },
+    [updateDarkMode],
+  );
+
+  const formatCurrency = useCallback(
+    (amount: number) => formatWithCurrency(amount, currency, language),
+    [currency, language],
+  );
+
+  const convertAmount = useCallback(
+    (amount: number, from: Currency, to: Currency): number => {
+      if (from === to) return amount;
+      const fromRate = exchangeRates[from] || 1;
+      const toRate = exchangeRates[to] || 1;
+      return (amount / fromRate) * toRate;
+    },
+    [exchangeRates],
+  );
+
+  const t = useCallback((key: string) => translations[language]?.[key] ?? key, [language]);
+
+  const value = useMemo<SettingsContextType>(
+    () => ({
+      language,
+      setLanguage,
+      currency,
+      setCurrency,
+      darkMode,
+      setDarkMode,
+      payday: settings?.payday ?? 15,
+      exchangeRates,
+      isLoadingRates,
+      formatCurrency,
+      convertAmount,
+      getCurrencyInfo,
+      t,
+      isLoadingSettings: isLoadingGraphQL,
+      settingsError: graphqlError ?? null,
+    }),
+    [
+      language,
+      setLanguage,
+      currency,
+      setCurrency,
+      darkMode,
+      setDarkMode,
+      settings?.payday,
+      exchangeRates,
+      isLoadingRates,
+      formatCurrency,
+      convertAmount,
+      t,
+      isLoadingGraphQL,
+      graphqlError,
+    ],
+  );
+
+  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 
-export function useSettings() {
+export function useSettings(): SettingsContextType {
   const context = useContext(SettingsContext);
-  if (context === undefined) {
-    throw new Error('useSettings must be used within a SettingsProvider');
-  }
+  if (!context) throw new Error('useSettings must be used within SettingsProvider');
   return context;
 }

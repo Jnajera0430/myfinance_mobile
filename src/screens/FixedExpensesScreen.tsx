@@ -1,5 +1,6 @@
-const FixedExpensesScreen = () => {
-  return null; // Implementar pantalla de gastos fijos
-};
+import MovementsScreen from './MovementsScreen';
 
-export default FixedExpensesScreen;
+/** Gastos obligatorios y periodicos: arriendo, servicios, suscripciones, seguros. */
+export default function FixedExpensesScreen() {
+  return <MovementsScreen initialSegment="FIXED_EXPENSE" />;
+}

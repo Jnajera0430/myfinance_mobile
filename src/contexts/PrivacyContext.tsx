@@ -1,58 +1,68 @@
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { readFlag, writeFlag } from '@/lib/auth-storage';
+import { formatAmount } from '@/lib/format';
+import { useSettings } from './SettingsContext';
+
+const STORAGE_KEY = 'privacy_incognito';
 
 interface PrivacyContextType {
   isIncognito: boolean;
   toggleIncognito: () => void;
+  /** Enmascara el monto cuando el modo privado esta activo. */
   formatAmount: (amount: number, forceShow?: boolean) => string;
 }
 
 const PrivacyContext = createContext<PrivacyContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'privacy_incognito';
-
 export function PrivacyProvider({ children }: { children: ReactNode }) {
-  const [isIncognito, setIsIncognito] = useState(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored === 'true';
-  });
+  const [isIncognito, setIsIncognito] = useState(false);
+  const { currency, language } = useSettings();
 
+  // React Native no tiene document.body: el estado se persiste nativamente.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, isIncognito.toString());
-    
-    // Toggle class on body for CSS-based hiding
-    if (isIncognito) {
-      document.body.classList.add('incognito');
-    } else {
-      document.body.classList.remove('incognito');
-    }
-  }, [isIncognito]);
-
-  const toggleIncognito = useCallback(() => {
-    setIsIncognito(prev => !prev);
+    let mounted = true;
+    readFlag(STORAGE_KEY).then((value) => {
+      if (mounted) setIsIncognito(value);
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const formatAmount = useCallback((amount: number, forceShow = false) => {
-    if (isIncognito && !forceShow) {
-      return '$ ****';
-    }
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  }, [isIncognito]);
+  const toggleIncognito = useCallback(() => {
+    setIsIncognito((prev) => {
+      const next = !prev;
+      void writeFlag(STORAGE_KEY, next);
+      return next;
+    });
+  }, []);
 
-  return (
-    <PrivacyContext.Provider value={{ isIncognito, toggleIncognito, formatAmount }}>
-      {children}
-    </PrivacyContext.Provider>
+  const formatValue = useCallback(
+    (amount: number, forceShow = false) => {
+      if (isIncognito && !forceShow) return '••••••';
+      return formatAmount(amount, currency, language);
+    },
+    [isIncognito, currency, language],
   );
+
+  const value = useMemo(
+    () => ({ isIncognito, toggleIncognito, formatAmount: formatValue }),
+    [isIncognito, toggleIncognito, formatValue],
+  );
+
+  return <PrivacyContext.Provider value={value}>{children}</PrivacyContext.Provider>;
 }
 
-export function usePrivacy() {
+export function usePrivacy(): PrivacyContextType {
   const context = useContext(PrivacyContext);
-  if (context === undefined) {
-    throw new Error('usePrivacy must be used within a PrivacyProvider');
-  }
+  if (!context) throw new Error('usePrivacy must be used within PrivacyProvider');
   return context;
 }

@@ -1,21 +1,25 @@
 {
   "expo": {
-    "name": "mifinanzas-mobile",
+    "name": "Mifinanzas",
     "slug": "mifinanzas-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#f8fafc"
     },
     "scheme": "mifinanzas",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mifinanzas.app"
+      "bundleIdentifier": "com.mifinanzas.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "La cámara se usa para escanear el código QR de tus facturas.",
+        "NSPhotoLibraryUsageDescription": "Accedemos a tus imágenes para leer códigos QR de facturas guardadas."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,10 +37,7 @@
               "scheme": "mifinanzas"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
@@ -48,8 +49,26 @@
       "expo-secure-store",
       "expo-font",
       "expo-web-browser",
-      "expo-router",
-      "@react-native-community/datetimepicker"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permitimos el uso de la cámara para escanear códigos QR de facturas.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Elegimos una imagen de tu galería para leer el código QR de la factura."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#6366f1"
+        }
+      ]
     ]
   }
 }

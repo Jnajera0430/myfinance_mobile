@@ -1,26 +1,25 @@
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Ionicons } from "@expo/vector-icons";
-import LoginScreen from "../screens/LoginScreen";
-import RegisterScreen from "../screens/RegisterScreen";
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
+
+export type AuthStackParamList = {
+  Login: undefined;
+  Register: undefined;
+};
+
+const Stack = createNativeStackNavigator<AuthStackParamList>();
 
 export default function AuthNavigator() {
-  const Tab = createBottomTabNavigator();
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          const icons: Record<string, string> = {
-            Login: 'log-in',
-            Register: 'person-add',
-          };
-          return <Ionicons name={icons[route.name] as any} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#6366f1',
-        tabBarInactiveTintColor: 'gray',
-      })}
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+        contentStyle: { backgroundColor: '#f8fafc' },
+      }}
     >
-      <Tab.Screen name="Login" component={LoginScreen} />
-      <Tab.Screen name="Register" component={RegisterScreen} />
-    </Tab.Navigator>
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+    </Stack.Navigator>
   );
-};
+}

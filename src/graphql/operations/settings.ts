@@ -26,7 +26,27 @@ export const MY_SETTINGS_QUERY = gql`
   ${USER_SETTINGS_FRAGMENT}
 `;
 
+export const EXCHANGE_RATES_QUERY = gql`
+  query ExchangeRates($baseCurrency: String, $targetCurrency: String) {
+    exchangeRates(baseCurrency: $baseCurrency, targetCurrency: $targetCurrency) {
+      baseCurrency
+      targetCurrency
+      rate
+      date
+    }
+  }
+`;
+
 // ==================== MUTATIONS ====================
+
+export const UPDATE_SETTINGS_MUTATION = gql`
+  mutation UpdateSettings($input: UpdateSettingsInput!) {
+    updateSettings(input: $input) {
+      ...UserSettingsFields
+    }
+  }
+  ${USER_SETTINGS_FRAGMENT}
+`;
 
 export const UPDATE_PAYDAY_MUTATION = gql`
   mutation UpdatePayday($payday: Int!) {
@@ -58,15 +78,6 @@ export const UPDATE_CURRENCY_MUTATION = gql`
 export const UPDATE_DARK_MODE_MUTATION = gql`
   mutation UpdateDarkMode($darkMode: Boolean!) {
     updateDarkMode(darkMode: $darkMode) {
-      ...UserSettingsFields
-    }
-  }
-  ${USER_SETTINGS_FRAGMENT}
-`;
-
-export const UPDATE_SETTINGS_MUTATION = gql`
-  mutation UpdateSettings($input: UpdateSettingsInput!) {
-    updateSettings(input: $input) {
       ...UserSettingsFields
     }
   }

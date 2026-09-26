@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,15 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
-  Alert,
   Platform,
+  Linking,
+  Alert,
 } from 'react-native';
-import { Camera, QrCode, Image as ImageIcon, X } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-// import QRCodeDecoder from 'react-native-qrcode-decoder';
+import { Camera, QrCode, Image as ImageIcon, X } from 'lucide-react-native';
 import { cn } from '../../lib/utils';
-import { LinearGradient } from 'expo-linear-gradient';
+import { todayISO } from '../../lib/format';
 
 interface InvoiceDataFromQR {
   amount?: number;
@@ -29,251 +29,254 @@ interface InvoiceDataFromQR {
 export interface ScanTicketModalProps {
   visible: boolean;
   onClose: () => void;
-  onScanComplete?: (data: { 
-    amount: number; 
-    description: string; 
+  onScanComplete?: (data: {
+    amount: number;
+    description: string;
     date: string;
     invoiceData?: {
       rfc?: string;
       uuid?: string;
       vendor?: string;
       rawQRData?: string;
-      scannedAt?: string;
     };
   }) => void;
 }
 
 type ScanStatus = 'idle' | 'scanning' | 'processing' | 'success' | 'error';
 
-// Reuse the same QR parsing logic (pure JS, works in RN)
+const onlyDigitsAndDot = (value: string) => value.replace(/[^0-9.]/g, '');
+
+/** Lee los params de un QR CFDI sin depender de la API web URL. */
+function parseQuery(qrContent: string): Record<string, string> {
+  const query = qrContent.split('?')[1] ?? '';
+  const result: Record<string, string> = {};
+  for (const pair of query.split('&')) {
+    if (!pair) continue;
+    const [rawKey, rawValue = ''] = pair.split('=');
+    try {
+      result[decodeURIComponent(rawKey)] = decodeURIComponent(rawValue);
+    } catch {
+      result[rawKey] = rawValue;
+    }
+  }
+  return result;
+}
+
 const parseQRData = (qrContent: string): InvoiceDataFromQR => {
   const data: InvoiceDataFromQR = {};
-  
+
   try {
-    if (qrContent.startsWith('{')) {
-      const jsonData = JSON.parse(qrContent);
+    if (qrContent.trim().startsWith('{')) {
+      const json = JSON.parse(qrContent) as Record<string, unknown>;
       return {
-        amount: jsonData.total || jsonData.amount || jsonData.monto,
-        description: jsonData.description || jsonData.concepto || jsonData.vendor || 'Factura escaneada',
-        date: jsonData.date || jsonData.fecha || new Date().toISOString().split('T')[0],
-        rfc: jsonData.rfc,
-        uuid: jsonData.uuid || jsonData.folio,
-        vendor: jsonData.vendor || jsonData.emisor,
+        amount: Number(json.total ?? json.amount ?? json.monto ?? 0) || undefined,
+        description: String(json.description ?? json.concepto ?? json.vendor ?? 'Factura escaneada'),
+        date: String(json.date ?? json.fecha ?? todayISO()),
+        rfc: json.rfc ? String(json.rfc) : undefined,
+        uuid: json.uuid || json.folio ? String(json.uuid ?? json.folio) : undefined,
+        vendor: json.vendor || json.emisor ? String(json.vendor ?? json.emisor) : undefined,
       };
     }
 
     if (qrContent.includes('sat.gob.mx') || qrContent.includes('verificacfdi')) {
-      // For React Native, URL parsing is similar but we need to use a workaround
-      let url;
-      try {
-        url = new URL(qrContent);
-      } catch {
-        // If URL parsing fails, use regex
-        const ttMatch = qrContent.match(/[?&]tt=([^&]+)/);
-        if (ttMatch) data.amount = parseFloat(ttMatch[1].replace(/[^0-9.]/g, ''));
-        const reMatch = qrContent.match(/[?&]re=([^&]+)/);
-        if (reMatch) data.rfc = reMatch[1];
-        const idMatch = qrContent.match(/[?&]id=([^&]+)/);
-        if (idMatch) data.uuid = idMatch[1];
-        const feMatch = qrContent.match(/[?&]fe=([^&]+)/);
-        if (feMatch) data.date = feMatch[1];
-        data.description = data.rfc ? `Factura de ${data.rfc}` : 'Factura CFDI';
-        data.vendor = data.rfc || undefined;
-        return data;
-      }
-      const params = url.searchParams;
-      const totalStr = params.get('tt');
-      if (totalStr) data.amount = parseFloat(totalStr.replace(/[^0-9.]/g, ''));
-      data.rfc = params.get('re') || undefined;
-      data.uuid = params.get('id') || undefined;
-      const fecha = params.get('fe');
-      if (fecha) data.date = fecha;
+      const params = parseQuery(qrContent);
+      if (params.tt) data.amount = Number(onlyDigitsAndDot(params.tt)) || undefined;
+      if (params.re) data.rfc = params.re;
+      if (params.id) data.uuid = params.id;
+      if (params.fe) data.date = params.fe;
       data.description = data.rfc ? `Factura de ${data.rfc}` : 'Factura CFDI';
-      data.vendor = data.rfc || undefined;
+      data.vendor = data.rfc;
       return data;
     }
 
-    // key=value parsing (same as web)
     if (qrContent.includes('|') || qrContent.includes(':')) {
-      const pairs = qrContent.split(/[|&\n]/);
-      pairs.forEach(pair => {
-        const [key, value] = pair.split(/[:=]/).map(s => s.trim());
-        const keyLower = key?.toLowerCase();
-        if (keyLower?.includes('total') || keyLower?.includes('monto') || keyLower?.includes('amount')) {
-          data.amount = parseFloat(value?.replace(/[^0-9.]/g, '') || '0');
+      qrContent.split(/[|\n&]/).forEach((pair) => {
+        const [rawKey, ...rest] = pair.split(/[:=]/);
+        const value = rest.join(':').trim();
+        const key = rawKey?.toLowerCase().trim();
+        if (!key) return;
+        if (['total', 'monto', 'amount', 'importe'].some((token) => key.includes(token))) {
+          data.amount = Number(onlyDigitsAndDot(value)) || undefined;
         }
-        if (keyLower?.includes('fecha') || keyLower?.includes('date')) data.date = value;
-        if (keyLower?.includes('concepto') || keyLower?.includes('desc')) data.description = value;
-        if (keyLower?.includes('rfc')) data.rfc = value;
-        if (keyLower?.includes('uuid') || keyLower?.includes('folio')) data.uuid = value;
-        if (keyLower?.includes('emisor') || keyLower?.includes('vendor')) data.vendor = value;
+        if (['fecha', 'date'].some((token) => key.includes(token))) data.date = value;
+        if (['concepto', 'desc'].some((token) => key.includes(token))) data.description = value;
+        if (key.includes('rfc')) data.rfc = value;
+        if (['uuid', 'folio', 'serial'].some((token) => key.includes(token))) data.uuid = value;
+        if (['emisor', 'vendor', 'comercio', 'tienda'].some((token) => key.includes(token))) {
+          data.vendor = value;
+        }
       });
       if (!data.description && data.vendor) data.description = `Compra en ${data.vendor}`;
       return data;
     }
 
-    const numericValue = parseFloat(qrContent.replace(/[^0-9.]/g, ''));
-    if (!isNaN(numericValue) && numericValue > 0) {
-      data.amount = numericValue;
+    const numeric = Number(onlyDigitsAndDot(qrContent));
+    if (!Number.isNaN(numeric) && numeric > 0) {
+      data.amount = numeric;
       data.description = 'Pago escaneado';
     }
   } catch (error) {
-    console.error('Error parsing QR data:', error);
+    if (__DEV__) console.warn('No se pudo leer el QR:', error);
   }
+
   return data;
 };
 
-const ScanTicketModal = ({ visible, onClose, onScanComplete }: ScanTicketModalProps) => {
+export default function ScanTicketModal({ visible, onClose, onScanComplete }: ScanTicketModalProps) {
   const [status, setStatus] = useState<ScanStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [rawQRData, setRawQRData] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [rawQRData, setRawQRData] = useState('');
   const [parsedInvoice, setParsedInvoice] = useState<InvoiceDataFromQR>({});
-  const [extractedData, setExtractedData] = useState({
-    amount: '',
-    description: '',
-    date: new Date().toISOString().split('T')[0],
-  });
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  const cameraRef = useRef<any>(null);
+  const [extracted, setExtracted] = useState({ amount: '', description: '', date: todayISO() });
+  const [permission, requestPermission] = useCameraPermissions();
+  const [cameraActive, setCameraActive] = useState(false);
 
-  // Reset when modal closes
-  useEffect(() => {
-    if (!visible) {
-      handleReset();
-      setIsCameraActive(false);
-    }
-  }, [visible]);
-
-  const handleReset = () => {
+  const reset = useCallback(() => {
     setStatus('idle');
     setErrorMessage('');
     setRawQRData('');
     setParsedInvoice({});
-    setExtractedData({
-      amount: '',
-      description: '',
-      date: new Date().toISOString().split('T')[0],
-    });
-    setIsCameraActive(false);
-  };
+    setExtracted({ amount: '', description: '', date: todayISO() });
+    setCameraActive(false);
+  }, []);
 
-  const handleQRSuccess = async (qrContent: string) => {
+  useEffect(() => {
+    if (!visible) reset();
+  }, [visible, reset]);
+
+  const handleQRContent = (content: string) => {
+    setCameraActive(false);
     setStatus('processing');
-    setRawQRData(qrContent);
-    const parsed = parseQRData(qrContent);
+    setRawQRData(content);
+
+    const parsed = parseQRData(content);
     setParsedInvoice(parsed);
-    setExtractedData({
-      amount: parsed.amount?.toString() || '',
-      description: parsed.description || 'Gasto escaneado',
-      date: parsed.date || new Date().toISOString().split('T')[0],
+    setExtracted({
+      amount: parsed.amount ? String(parsed.amount) : '',
+      description: parsed.description ?? 'Gasto escaneado',
+      date: parsed.date ?? todayISO(),
     });
     setStatus('success');
   };
 
   const startCameraScan = async () => {
-    if (!cameraPermission) {
-      const { granted } = await requestCameraPermission();
-      if (!granted) {
-        setStatus('error');
-        setErrorMessage('Se requiere permiso de cámara para escanear QR.');
-        return;
-      }
-    }
-    setStatus('scanning');
-    setIsCameraActive(true);
     setErrorMessage('');
-  };
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (status === 'scanning') {
-      // Stop scanning after first detection to avoid multiple triggers
-      setIsCameraActive(false);
-      handleQRSuccess(data);
-    }
-  };
-
-  const pickImageAndScan = async () => {
-    const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (mediaStatus !== 'granted') {
+    if (!permission) {
       setStatus('error');
-      setErrorMessage('Se requiere permiso para acceder a la galería.');
+      setErrorMessage('No pudimos verificar el permiso de cámara.');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
+    if (!permission.granted) {
+      if (permission.canAskAgain) {
+        const result = await requestPermission();
+        if (!result.granted) {
+          setStatus('error');
+          setErrorMessage('Necesitamos acceso a la cámara para leer el QR.');
+          return;
+        }
+      } else {
+        Alert.alert(
+          'Permiso denegado',
+          'Activa el acceso a la cámara desde la configuración de la app.',
+          [{ text: 'Abrir ajustes', onPress: () => void Linking.openSettings() }, { text: 'Cancelar' }],
+        );
+        return;
+      }
+    }
+
+    setStatus('scanning');
+    setCameraActive(true);
+  };
+
+  const pickImageAndScan = async () => {
+    setErrorMessage('');
+    const library = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
       quality: 1,
+      allowsEditing: false,
     });
 
-    if (!result.canceled && result.assets[0].uri) {
-      setStatus('processing');
-      try {
-        // const qrData = await QRCodeDecoder.decode(result.assets[0].uri);
-        // if (qrData) {
-        //   await handleQRSuccess(qrData);
-        // } else {
-        //   throw new Error('No QR code found');
-        // }
-      } catch (error: any) {
-        console.error('QR decode error:', error);
-        setStatus('error');
-        setErrorMessage('No se encontró ningún código QR en la imagen. Asegúrate de que sea visible.');
-      }
-    } else {
-      // User cancelled
+    if (library.canceled || !library.assets?.[0]?.uri) {
       setStatus('idle');
+      return;
+    }
+
+    setStatus('processing');
+    try {
+      // expo-camera decodifica QR desde un archivo local (reemplaza al libreria web)
+      const results = await CameraView.scanFromURLAsync(library.assets[0].uri, ['qr']);
+      const first = results?.[0]?.data;
+
+      if (!first) {
+        setStatus('error');
+        setErrorMessage('No encontramos un código QR legible en la imagen.');
+        return;
+      }
+
+      handleQRContent(first);
+    } catch (error) {
+      if (__DEV__) console.warn('Error decodificando imagen:', error);
+      setStatus('error');
+      setErrorMessage('No se pudo leer la imagen. Prueba con la cámara o otra foto.');
     }
   };
 
   const handleConfirm = () => {
-    if (onScanComplete && extractedData.amount) {
-      onScanComplete({
-        amount: parseFloat(extractedData.amount),
-        description: extractedData.description,
-        date: extractedData.date,
-        invoiceData: {
-          rfc: parsedInvoice.rfc,
-          uuid: parsedInvoice.uuid,
-          vendor: parsedInvoice.vendor,
-          rawQRData,
-          scannedAt: new Date().toISOString(),
-        },
-      });
+    const value = Number(extracted.amount);
+    if (!value || value <= 0) {
+      setErrorMessage('Ingresa un monto válido antes de guardar.');
+      setStatus('error');
+      return;
     }
-    handleReset();
+
+    onScanComplete?.({
+      amount: value,
+      description: extracted.description || 'Compra escaneada',
+      date: extracted.date || todayISO(),
+      invoiceData: {
+        rfc: parsedInvoice.rfc,
+        uuid: parsedInvoice.uuid,
+        vendor: parsedInvoice.vendor,
+        rawQRData,
+      },
+    });
+
+    reset();
     onClose();
   };
 
-  // Render different screens based on status
   const renderContent = () => {
     switch (status) {
       case 'idle':
         return (
-          <View className="space-y-4">
-            <Text className="text-sm text-muted-foreground text-center">
-              Escanea el código QR de tu factura para capturar automáticamente los datos
+          <View>
+            <Text className="text-sm text-muted-foreground text-center mb-4">
+              Escanea el código QR de tu factura para capturar el monto y los datos fiscales.
             </Text>
+
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={startCameraScan}
-                className="flex-1 items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5"
+                className="flex-1 items-center rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6"
               >
-                <Camera size={40} color="#3b82f6" />
-                <Text className="text-sm font-medium text-primary">Usar Cámara</Text>
+                <Camera size={36} color="#6366f1" />
+                <Text className="text-sm font-semibold text-primary mt-2">Usar cámara</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={pickImageAndScan}
-                className="flex-1 items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-border bg-muted/30"
+                className="flex-1 items-center rounded-2xl border-2 border-dashed border-border bg-muted/40 p-6"
               >
-                <ImageIcon size={40} color="#6b7280" />
-                <Text className="text-sm font-medium text-muted-foreground">Subir Imagen</Text>
+                <ImageIcon size={36} color="#64748b" />
+                <Text className="text-sm font-semibold text-muted-foreground mt-2">Subir imagen</Text>
               </TouchableOpacity>
             </View>
-            <View className="bg-muted/50 rounded-lg p-3">
+
+            <View className="bg-muted rounded-2xl p-3 mt-4">
               <Text className="text-xs text-muted-foreground text-center">
-                💡 Compatible con facturas CFDI (SAT), códigos QR bancarios y formatos estándar
+                Compatible con facturas CFDI (SAT), QR bancarios y tickets con formato clave:valor
               </Text>
             </View>
           </View>
@@ -281,137 +284,130 @@ const ScanTicketModal = ({ visible, onClose, onScanComplete }: ScanTicketModalPr
 
       case 'scanning':
         return (
-          <View className="space-y-4">
-            <View className="relative rounded-lg overflow-hidden bg-black aspect-square">
-              {isCameraActive && (
+          <View>
+            <View
+              className="rounded-2xl overflow-hidden bg-black"
+              style={{ height: 320 }}
+            >
+              {cameraActive && Platform.OS !== 'web' && (
                 <CameraView
-                  ref={cameraRef}
                   style={{ flex: 1 }}
                   facing="back"
                   barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                  onBarcodeScanned={handleBarCodeScanned}
+                  onBarcodeScanned={(event) => {
+                    if (status === 'scanning' && event?.data) handleQRContent(event.data);
+                  }}
                 />
               )}
-              <View className="absolute inset-0 items-center justify-center">
-                <View className="w-56 h-56 border-2 border-primary rounded-lg" />
-              </View>
             </View>
-            <Text className="text-sm text-center text-muted-foreground">
-              🔍 Buscando código QR...
+
+            <Text className="text-sm text-center text-muted-foreground mt-3">
+              Buscando código QR…
             </Text>
             <TouchableOpacity
-              onPress={() => {
-                setIsCameraActive(false);
-                handleReset();
-              }}
-              className="py-3 rounded-lg border border-border items-center"
+              onPress={reset}
+              className="rounded-2xl border border-border py-3 items-center mt-2"
             >
-              <Text className="text-foreground">Cancelar</Text>
+              <Text className="text-foreground font-medium">Cancelar</Text>
             </TouchableOpacity>
           </View>
         );
 
       case 'processing':
         return (
-          <View className="items-center justify-center py-12">
-            <ActivityIndicator size="large" color="#3b82f6" />
-            <Text className="mt-3 text-sm font-medium text-foreground">Procesando datos...</Text>
+          <View className="items-center py-12">
+            <ActivityIndicator size="large" color="#6366f1" />
+            <Text className="mt-3 text-sm font-medium text-foreground">Procesando datos…</Text>
           </View>
         );
 
       case 'error':
         return (
-          <View className="space-y-4">
-            <View className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
+          <View>
+            <View className="bg-destructive/10 border border-destructive/25 rounded-2xl p-4">
               <Text className="text-sm text-destructive font-medium">❌ {errorMessage}</Text>
             </View>
             <TouchableOpacity
-              onPress={handleReset}
-              className="py-3 rounded-lg border border-border items-center"
+              onPress={reset}
+              className="rounded-2xl border border-border py-3 items-center mt-4"
             >
-              <Text className="text-foreground">Intentar de nuevo</Text>
+              <Text className="text-foreground font-medium">Intentar de nuevo</Text>
             </TouchableOpacity>
           </View>
         );
 
       case 'success':
         return (
-          <View className="space-y-4">
-            <View className="bg-income/10 border border-income/30 rounded-lg p-3">
-              <Text className="text-sm text-income font-medium">✅ ¡Código QR leído correctamente!</Text>
+          <View>
+            <View className="bg-income/10 border border-income/25 rounded-2xl p-3 mb-4">
+              <Text className="text-sm text-income font-medium">
+                ✓ Código QR leído correctamente
+              </Text>
             </View>
 
-            {(parsedInvoice.rfc || parsedInvoice.uuid) && (
-              <View className="bg-muted/50 rounded-lg p-3 space-y-1">
-                <Text className="text-xs font-medium text-muted-foreground mb-2">Datos fiscales detectados:</Text>
-                {parsedInvoice.rfc && (
-                  <Text className="text-xs">
-                    <Text className="text-muted-foreground">RFC:</Text> <Text className="font-mono">{parsedInvoice.rfc}</Text>
-                  </Text>
+            {(parsedInvoice.rfc || parsedInvoice.uuid || parsedInvoice.vendor) && (
+              <View className="bg-muted rounded-2xl p-3 mb-4">
+                <Text className="text-xs font-semibold text-muted-foreground mb-2">
+                  Datos detectados
+                </Text>
+                {!!parsedInvoice.vendor && (
+                  <Text className="text-xs text-foreground">Proveedor: {parsedInvoice.vendor}</Text>
                 )}
-                {parsedInvoice.uuid && (
-                  <Text className="text-xs">
-                    <Text className="text-muted-foreground">UUID:</Text> <Text className="font-mono text-[10px]">{parsedInvoice.uuid}</Text>
+                {!!parsedInvoice.rfc && (
+                  <Text className="text-xs text-foreground font-mono">RFC: {parsedInvoice.rfc}</Text>
+                )}
+                {!!parsedInvoice.uuid && (
+                  <Text className="text-xs text-foreground font-mono" numberOfLines={1}>
+                    UUID: {parsedInvoice.uuid}
                   </Text>
                 )}
               </View>
             )}
 
-            <View className="space-y-3">
-              <View className="space-y-2">
-                <Text className="text-sm font-medium text-foreground">Monto</Text>
-                <View className="relative flex-row items-center">
-                  <Text className="absolute left-3 text-muted-foreground">$</Text>
-                  <TextInput
-                    value={extractedData.amount}
-                    onChangeText={(text) => setExtractedData(prev => ({ ...prev, amount: text }))}
-                    keyboardType="numeric"
-                    placeholder="0.00"
-                    className="flex-1 border border-border rounded-lg px-8 py-3 text-foreground bg-muted/30 text-lg font-semibold"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-              </View>
+            <Text className="text-sm font-medium text-foreground mb-1.5">Monto</Text>
+            <TextInput
+              value={extracted.amount}
+              onChangeText={(text) => setExtracted((prev) => ({ ...prev, amount: text }))}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#94a3b8"
+              className="rounded-2xl border border-border bg-white px-4 py-3 text-lg font-semibold text-foreground mb-4"
+            />
 
-              <View className="space-y-2">
-                <Text className="text-sm font-medium text-foreground">Descripción</Text>
-                <TextInput
-                  value={extractedData.description}
-                  onChangeText={(text) => setExtractedData(prev => ({ ...prev, description: text }))}
-                  placeholder="Descripción del gasto"
-                  className="border border-border rounded-lg px-4 py-3 text-foreground bg-muted/30"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
+            <Text className="text-sm font-medium text-foreground mb-1.5">Descripción</Text>
+            <TextInput
+              value={extracted.description}
+              onChangeText={(text) => setExtracted((prev) => ({ ...prev, description: text }))}
+              placeholder="Descripción del gasto"
+              placeholderTextColor="#94a3b8"
+              className="rounded-2xl border border-border bg-white px-4 py-3 text-base text-foreground mb-4"
+            />
 
-              <View className="space-y-2">
-                <Text className="text-sm font-medium text-foreground">Fecha</Text>
-                <TextInput
-                  value={extractedData.date}
-                  onChangeText={(text) => setExtractedData(prev => ({ ...prev, date: text }))}
-                  placeholder="YYYY-MM-DD"
-                  className="border border-border rounded-lg px-4 py-3 text-foreground bg-muted/30"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-            </View>
+            <Text className="text-sm font-medium text-foreground mb-1.5">Fecha</Text>
+            <TextInput
+              value={extracted.date}
+              onChangeText={(text) => setExtracted((prev) => ({ ...prev, date: text }))}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              className="rounded-2xl border border-border bg-white px-4 py-3 text-base text-foreground mb-5"
+            />
 
             <View className="flex-row gap-3">
               <TouchableOpacity
-                onPress={handleReset}
-                className="flex-1 py-3 rounded-lg border border-border items-center"
+                onPress={reset}
+                className="flex-1 rounded-2xl border border-border py-3.5 items-center"
               >
-                <Text className="text-foreground">Escanear otro</Text>
+                <Text className="text-foreground font-semibold">Escanear otro</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleConfirm}
-                disabled={!extractedData.amount}
+                disabled={!extracted.amount}
                 className={cn(
-                  "flex-1 py-3 rounded-lg bg-primary items-center",
-                  !extractedData.amount && "opacity-50"
+                  'flex-1 rounded-2xl bg-primary py-3.5 items-center',
+                  !extracted.amount && 'opacity-50',
                 )}
               >
-                <Text className="text-primary-foreground font-medium">Guardar gasto</Text>
+                <Text className="text-white font-semibold">Guardar gasto</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -423,35 +419,28 @@ const ScanTicketModal = ({ visible, onClose, onScanComplete }: ScanTicketModalPr
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View className="flex-1 bg-black/50 justify-end">
-        <LinearGradient
-          colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          className="bg-card rounded-t-3xl border-t border-border max-h-[90%]"
-        >
-          <ScrollView className="p-5" showsVerticalScrollIndicator={false}>
+        <View className="bg-card rounded-t-3xl border-t border-border">
+          <ScrollView
+            contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <View className="flex-row justify-between items-center mb-4">
               <View className="flex-row items-center gap-2">
-                <QrCode size={20} color="#3b82f6" />
-                <Text className="text-xl font-bold text-foreground">Escanear Factura QR 📸</Text>
+                <QrCode size={20} color="#6366f1" />
+                <Text className="text-xl font-bold text-foreground">Escanear factura</Text>
               </View>
-              <TouchableOpacity onPress={onClose} className="p-2">
-                <X size={24} color="#6b7280" />
+              <TouchableOpacity onPress={onClose} accessibilityRole="button" className="p-2 -mr-2">
+                <X size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
+
             {renderContent()}
           </ScrollView>
-        </LinearGradient>
+        </View>
       </View>
     </Modal>
   );
-};
-
-export default ScanTicketModal;
+}

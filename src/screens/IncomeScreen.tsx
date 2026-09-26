@@ -1,5 +1,6 @@
-const IncomeScreen = () => {
-  return null; // Implementar pantalla de ingresos
-};
+import MovementsScreen from './MovementsScreen';
 
-export default IncomeScreen;
+/** Ingresos: sueldo, bonos, extras y otros. */
+export default function IncomeScreen() {
+  return <MovementsScreen initialSegment="INCOME" />;
+}

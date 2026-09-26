@@ -10,8 +10,10 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
-  open: boolean;
-  variant?: "default" | "destructive" | "success";
+  /** toast() lo fuerza a true; los llamadores pueden omitirlo */
+  open?: boolean;
+  variant?: 'default' | 'destructive' | 'success';
+  duration?: number;
   onOpenChange?: (open: boolean) => void;
 };
 

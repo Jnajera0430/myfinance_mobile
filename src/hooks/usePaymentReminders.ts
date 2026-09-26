@@ -1,6 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFinance } from '@/contexts/FinanceContext.graphql';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/hooks/use-toast';
+import { readFlag, writeFlag } from '@/lib/auth-storage';
+import { formatAmount } from '@/lib/format';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface Reminder {
   id: string;
@@ -11,113 +14,102 @@ interface Reminder {
   daysUntilDue: number;
 }
 
+export function getReminderMessage(daysUntilDue: number, description: string): string {
+  if (daysUntilDue === 0) return `¡Hoy vence ${description}! No lo olvides 💪`;
+  if (daysUntilDue === 1) return `¡Mañana vence ${description}! ¿Ya lo tienes listo?`;
+  return `${description} vence en ${daysUntilDue} días. ¡Tranquilo, hay tiempo!`;
+}
+
+/**
+ * Calcula los gastos fijos que vencen en los proximos 3 dias y
+ * muestra avisos amables una sola vez por dia.
+ */
 export function usePaymentReminders() {
   const { transactions } = useFinance();
-  const { toast } = useToast();
+  const { currency, language } = useSettings();
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [hasShownToday, setHasShownToday] = useState(false);
 
-  const checkReminders = useCallback(() => {
+  const checkReminders = useCallback((): Reminder[] => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const fixedExpenses = transactions.filter(t => t.type === 'FIXED_EXPENSE');
-    
-    const upcomingReminders: Reminder[] = [];
+    const upcoming: Reminder[] = [];
 
-    fixedExpenses.forEach(expense => {
-      const expenseDate = new Date(expense.date);
-      const expenseDay = expenseDate.getDate();
-      
-      // Calculate next due date (same day this month or next month)
-      const nextDue = new Date(today.getFullYear(), today.getMonth(), expenseDay);
-      if (nextDue < today) {
+    for (const expense of transactions) {
+      if (expense.type !== 'FIXED_EXPENSE') continue;
+
+      const expenseDate = new Date(`${expense.date}T00:00:00`);
+      if (Number.isNaN(expenseDate.getTime())) continue;
+
+      const dayOfMonth = expenseDate.getDate();
+      const nextDue = new Date(today.getFullYear(), today.getMonth(), dayOfMonth);
+      if (nextDue.getTime() < today.getTime()) {
         nextDue.setMonth(nextDue.getMonth() + 1);
       }
 
-      const diffTime = nextDue.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffDays = Math.ceil((nextDue.getTime() - today.getTime()) / 86_400_000);
 
-      // Remind 3 days before, 1 day before, and on the day
-      if (diffDays <= 3 && diffDays >= 0) {
-        upcomingReminders.push({
+      if (diffDays >= 0 && diffDays <= 3) {
+        upcoming.push({
           id: `reminder-${expense.id}`,
           transactionId: expense.id,
           description: expense.description,
-          amount: expense.amount,
-          dueDate: nextDue.toISOString().split('T')[0],
+          amount: Number(expense.amount),
+          dueDate: nextDue.toISOString().slice(0, 10),
           daysUntilDue: diffDays,
         });
       }
-    });
+    }
 
-    setReminders(upcomingReminders);
-    return upcomingReminders;
+    upcoming.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+    setReminders(upcoming);
+    return upcoming;
   }, [transactions]);
 
-  const showReminderNotifications = useCallback(() => {
-    const todayKey = new Date().toISOString().split('T')[0];
-    const shownKey = `reminders_shown_${todayKey}`;
-    
-    if (localStorage.getItem(shownKey)) {
-      return;
-    }
+  const showReminderNotifications = useCallback(async () => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const storageKey = `reminders_shown_${todayKey}`;
 
-    const upcomingReminders = checkReminders();
-    
-    upcomingReminders.forEach((reminder, index) => {
+    if (await readFlag(storageKey)) return;
+
+    const upcoming = checkReminders();
+
+    upcoming.forEach((reminder, index) => {
       setTimeout(() => {
-        let message = '';
-        if (reminder.daysUntilDue === 0) {
-          message = `¡Hoy vence tu pago de ${reminder.description}!`;
-        } else if (reminder.daysUntilDue === 1) {
-          message = `¡Mañana vence tu pago de ${reminder.description}!`;
-        } else {
-          message = `Tu pago de ${reminder.description} vence en ${reminder.daysUntilDue} días`;
-        }
-
         toast({
-          title: reminder.daysUntilDue === 0 ? '⚠️ Pago pendiente hoy' : '🔔 Recordatorio amable',
-          description: message,
+          title: reminder.daysUntilDue === 0 ? '⚠️ Pago pendiente hoy' : '🔔 Recordatorio',
+          description: getReminderMessage(reminder.daysUntilDue, reminder.description),
           duration: 6000,
         });
-      }, index * 2000); // Stagger notifications
+      }, index * 2000);
     });
 
-    if (upcomingReminders.length > 0) {
-      localStorage.setItem(shownKey, 'true');
+    if (upcoming.length > 0) {
+      await writeFlag(storageKey, true);
     }
-  }, [checkReminders, toast]);
-
-  useEffect(() => {
-    checkReminders();
   }, [checkReminders]);
 
   useEffect(() => {
-    // Show notifications on first load
+    if (transactions.length === 0) {
+      setReminders([]);
+      return;
+    }
+    checkReminders();
+  }, [checkReminders, transactions]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
-      if (!hasShownToday) {
-        showReminderNotifications();
-        setHasShownToday(true);
-      }
-    }, 2000);
+      void showReminderNotifications();
+    }, 2500);
 
     return () => clearTimeout(timer);
-  }, [showReminderNotifications, hasShownToday]);
+  }, [showReminderNotifications]);
 
-  return {
-    reminders,
-    checkReminders,
-    showReminderNotifications,
-  };
-}
+  const summaryText = useMemo(() => {
+    if (reminders.length === 0) return null;
+    const total = reminders.reduce((sum, item) => sum + item.amount, 0);
+    return `${reminders.length} pago(s) próximo(s) · ${formatAmount(total, currency, language)}`;
+  }, [reminders, currency, language]);
 
-export function getReminderMessage(daysUntilDue: number, description: string): string {
-  if (daysUntilDue === 0) {
-    return `¡Hoy vence ${description}! No olvides pagarlo 💪`;
-  } else if (daysUntilDue === 1) {
-    return `¡Mañana vence ${description}! ¿Ya lo tienes listo?`;
-  } else {
-    return `${description} vence en ${daysUntilDue} días. ¡Tranquilo, hay tiempo!`;
-  }
+  return { reminders, checkReminders, showReminderNotifications, summaryText };
 }

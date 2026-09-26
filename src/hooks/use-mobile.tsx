@@ -1,19 +1,33 @@
-import * as React from "react";
+import { useEffect, useState } from 'react';
+import { Dimensions } from 'react-native';
 
 const MOBILE_BREAKPOINT = 768;
 
+/** Equivalente nativo al matchMedia de web: usa el tamano real de ventana. */
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+  const [{ width, height }, setSize] = useState(() => {
+    const { width, height } = Dimensions.get('window');
+    return { width, height };
+  });
 
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    };
-    mql.addEventListener("change", onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    return () => mql.removeEventListener("change", onChange);
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setSize({ width: window.width, height: window.height });
+    });
+
+    return () => subscription?.remove();
   }, []);
 
-  return !!isMobile;
+  return width < MOBILE_BREAKPOINT;
+}
+
+export function useWindowDimensions() {
+  const [size, setSize] = useState(() => Dimensions.get('window'));
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => setSize(window));
+    return () => subscription?.remove();
+  }, []);
+
+  return size;
 }

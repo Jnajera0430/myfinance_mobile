@@ -1,112 +1,127 @@
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useApolloClient } from '@apollo/client/react';
-import { useCallback } from 'react';
-import { 
-  LOGIN_MUTATION, 
-  REGISTER_MUTATION, 
-  ME_QUERY 
-} from '../graphql/operations';
-import type { User, AuthResponse, LoginInput } from '../graphql/types';
+import { clearAuthStorage, getAuthToken, setAuthToken, setStoredUser } from '@/lib/auth-storage';
+import { LOGIN_MUTATION, ME_QUERY, REGISTER_MUTATION } from '@/graphql/operations';
+import type { AuthResponse, LoginInput, RegisterInput, User } from '@/graphql/types';
 
-interface UseAuthReturn {
+interface UseAuthGraphQLReturn {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, name: string) => Promise<boolean>;
-  logout: () => void;
-  refetchUser: () => void;
+  logout: () => Promise<void>;
+  refetchUser: () => Promise<void>;
 }
 
-export function useAuthGraphQL(): UseAuthReturn {
+/**
+ * Version "hook" de autenticacion (sin contexto).
+ * AuthContext es la via recomendada; esto sirve para pantallas puntuales.
+ */
+export function useAuthGraphQL(): UseAuthGraphQLReturn {
   const client = useApolloClient();
-  
-  // Query current user
-  const { data: userData, loading: userLoading, refetch: refetchUser, error: userError } = useQuery<{ me: User }>(
-    ME_QUERY,
-    {
-      skip: !localStorage.getItem('auth_token'),
-      errorPolicy: 'all',
-    }
-  );
+  const [user, setUser] = useState<User | null>(null);
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
 
-  // Handle auth errors
-  if (userError) {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-  }
+  const { loading: userLoading, refetch } = useQuery<{ me: User }>(ME_QUERY, {
+    skip: !hasToken,
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      if (data?.me) {
+        setUser(data.me);
+        void setStoredUser(data.me);
+      }
+    },
+    onError: () => {
+      void clearAuthStorage();
+      setUser(null);
+    },
+  });
 
-  // Login mutation
+  // Estado inicial asincrono: SecureStore no puede leerse durante el render.
+  useEffect(() => {
+    let mounted = true;
+    void getAuthToken().then((token) => {
+      if (mounted) setHasToken(!!token);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const [loginMutation, { loading: loginLoading }] = useMutation<
     { login: AuthResponse },
     { loginInput: LoginInput }
   >(LOGIN_MUTATION);
 
-  // Register mutation
   const [registerMutation, { loading: registerLoading }] = useMutation<
     { register: AuthResponse },
-    { email: string; password: string; name: string }
+    { registerInput: RegisterInput }
   >(REGISTER_MUTATION);
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    try {
-      const { data } = await loginMutation({
-        variables: { loginInput: { email, password } },
-      });
-      
-      if (data?.login) {
-        localStorage.setItem('auth_token', data.login.accessToken);
-        localStorage.setItem('auth_user', JSON.stringify(data.login.user));
-        
-        // Refetch user data
-        await refetchUser();
-        return true;
+  const login = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const { data } = await loginMutation({
+          variables: { loginInput: { email: email.trim().toLowerCase(), password } },
+        });
+        if (data?.login) {
+          await setAuthToken(data.login.accessToken);
+          await setStoredUser(data.login.user);
+          setUser(data.login.user);
+          setHasToken(true);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        if (__DEV__) console.error('Login error:', error);
+        return false;
       }
-      return false;
-    } catch (error) {
-      console.error('Login error:', error);
-      return false;
-    }
-  }, [loginMutation, refetchUser]);
+    },
+    [loginMutation],
+  );
 
-  const register = useCallback(async (email: string, password: string, name: string): Promise<boolean> => {
-    try {
-      const { data } = await registerMutation({
-        variables: { email, password, name },
-      });
-      
-      if (data?.register) {
-        localStorage.setItem('auth_token', data.register.accessToken);
-        localStorage.setItem('auth_user', JSON.stringify(data.register.user));
-        
-        // Refetch user data
-        await refetchUser();
-        return true;
+  const register = useCallback(
+    async (email: string, password: string, name: string) => {
+      try {
+        const { data } = await registerMutation({
+          variables: {
+            registerInput: { email: email.trim().toLowerCase(), password, name: name.trim() },
+          },
+        });
+        if (data?.register) {
+          await setAuthToken(data.register.accessToken);
+          await setStoredUser(data.register.user);
+          setUser(data.register.user);
+          setHasToken(true);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        if (__DEV__) console.error('Register error:', error);
+        return false;
       }
-      return false;
-    } catch (error) {
-      console.error('Register error:', error);
-      return false;
-    }
-  }, [registerMutation, refetchUser]);
+    },
+    [registerMutation],
+  );
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-    client.clearStore();
-    window.location.href = '/login';
+  const logout = useCallback(async () => {
+    await clearAuthStorage();
+    setUser(null);
+    setHasToken(false);
+    await client.clearStore();
   }, [client]);
 
-  // Cast to ensure proper typing - Apollo returns DeepPartial but our query fetches all fields
-  const user = userData?.me ? (userData.me as unknown as User) : null;
-  const isLoading = userLoading || loginLoading || registerLoading;
-  const isAuthenticated = !!user && !!localStorage.getItem('auth_token');
+  const refetchUser = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   return {
     user,
-    isLoading,
-    isAuthenticated,
-    isAdmin: user?.role.toLocaleLowerCase() === 'admin',
+    isLoading: userLoading || loginLoading || registerLoading || hasToken === null,
+    isAuthenticated: !!user,
+    isAdmin: user?.role === 'ADMIN',
     login,
     register,
     logout,

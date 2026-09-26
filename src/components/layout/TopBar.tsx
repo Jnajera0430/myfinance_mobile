@@ -1,24 +1,56 @@
 import { View, Text, TouchableOpacity } from 'react-native';
-import { User, Bell } from 'lucide-react-native';
-import { useAuth } from '../../contexts/AuthContext';
+import { NavigationProp, useNavigation } from '@react-navigation/native';
+import { Eye, EyeOff, Scan } from 'lucide-react-native';
+import { usePrivacy } from '../../contexts/PrivacyContext';
+import { usePaymentReminders } from '../../hooks/usePaymentReminders';
+import type { MainTabParamList } from '../../navigation/MainTabNavigator';
 
-export default function TopBar() {
-  const { user } = useAuth();
-  const name = user?.name?.split(' ')[0] || 'Usuario';
+interface TopBarProps {
+  greeting?: string;
+  name?: string | null;
+}
+
+export default function TopBar({ greeting = 'Hola', name }: TopBarProps) {
+  const { isIncognito, toggleIncognito } = usePrivacy();
+  const { reminders } = usePaymentReminders();
+  const navigation = useNavigation<NavigationProp<MainTabParamList>>();
+
+  const firstName = name?.trim().split(' ')[0] ?? '';
+  const dueSoon = reminders.filter((item) => item.daysUntilDue <= 1).length;
 
   return (
-    <View className="flex-row justify-between items-center px-4 py-3 bg-background border-b border-border">
-      <View>
-        <Text className="text-xs text-muted-foreground">Bienvenido,</Text>
-        <Text className="text-lg font-bold text-foreground">{name} 👋</Text>
+    <View className="flex-row items-center justify-between px-4 pt-3 pb-4">
+      <View className="flex-1">
+        <Text className="text-xs text-muted-foreground">{greeting}</Text>
+        <Text className="text-xl font-bold text-foreground" numberOfLines={1}>
+          {firstName ? `${firstName} 👋` : 'Tus finanzas'}
+        </Text>
       </View>
-      <View className="flex-row space-x-3">
-        <TouchableOpacity>
-          <Bell size={20} color="#6b7280" />
+
+      <View className="flex-row items-center gap-2">
+        {dueSoon > 0 && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`${dueSoon} pagos por vencer`}
+            onPress={() => navigation.navigate('Movements')}
+            className="flex-row items-center rounded-full bg-destructive/10 px-3 py-1.5"
+          >
+            <Text className="text-xs font-bold text-destructive">⚠ {dueSoon}</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          accessibilityRole="switch"
+          accessibilityLabel={isIncognito ? 'Mostrar montos' : 'Ocultar montos'}
+          onPress={toggleIncognito}
+          className="w-10 h-10 rounded-2xl border border-border items-center justify-center"
+        >
+          {isIncognito ? <EyeOff size={18} color="#6366f1" /> : <Eye size={18} color="#64748b" />}
         </TouchableOpacity>
-        <TouchableOpacity>
-          <User size={20} color="#6b7280" />
-        </TouchableOpacity>
+
+        <View className="w-10 h-10 rounded-2xl bg-primary/10 items-center justify-center">
+          <Scan size={18} color="#6366f1" />
+        </View>
       </View>
     </View>
   );

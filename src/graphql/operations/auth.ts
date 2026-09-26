@@ -8,8 +8,9 @@ export const USER_FRAGMENT = gql`
     email
     name
     avatar
-    createdAt
     role
+    createdAt
+    updatedAt
   }
 `;
 
@@ -46,13 +47,24 @@ export const LOGIN_MUTATION = gql`
 `;
 
 export const REGISTER_MUTATION = gql`
-  mutation Register($email: String!, $password: String!, $name: String!) {
-    register(email: $email, password: $password, name: $name) {
+  mutation Register($registerInput: RegisterInput!) {
+    register(registerInput: $registerInput) {
       ...AuthResponseFields
     }
   }
   ${AUTH_RESPONSE_FRAGMENT}
 `;
+
+export const UPDATE_USER_MUTATION = gql`
+  mutation UpdateUser($input: UpdateUserInput!) {
+    updateUser(input: $input) {
+      ...UserFields
+    }
+  }
+  ${USER_FRAGMENT}
+`;
+
+// ==================== QUERIES (tokens de acceso) ====================
 
 export const VERIFY_TOKEN = gql`
   query ValidateToken {

@@ -1,213 +1,146 @@
-// src/screens/ReportsScreen.tsx
 import { useState } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { BarChart3, TrendingUp, PiggyBank, Calendar } from 'lucide-react-native';
 import { useFinanceAnalytics } from '@/hooks/useFinanceAnalytics';
-import { 
-  BarChart3, 
-  PiggyBank, 
-  Calendar, 
-  TrendingUp,
-  Brain,
-  Trophy
-} from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { cn } from '@/lib/utils';
 
-// Import converted report components (adjust paths as needed)
-import TopCategoriesCard from '@/components/reports/TopCategoriesCard';
-import MonthlyTrendChart from '@/components/reports/MonthlyTrendChart';
-import SavingsRateCard from '@/components/reports/SavingsRateCard';
-import SmallExpensesCard from '@/components/reports/SmallExpensesCard';
-import DaySpendingCard from '@/components/reports/DaySpendingCard';
-import FixedVsVariableCard from '@/components/reports/FixedVsVariableCard';
-import MonthComparisonCard from '@/components/reports/MonthComparisonCard';
-import ProjectionCard from '@/components/reports/ProjectionCard';
-import BestMonthCard from '@/components/reports/BestMonthCard';
 import InsightsCard from '@/components/reports/InsightsCard';
+import TopCategoriesCard from '@/components/reports/TopCategoriesCard';
+import FixedVsVariableCard from '@/components/reports/FixedVsVariableCard';
+import SmallExpensesCard from '@/components/reports/SmallExpensesCard';
+import MonthlyTrendChart from '@/components/reports/MonthlyTrendChart';
+import MonthComparisonCard from '@/components/reports/MonthComparisonCard';
+import SavingsRateCard from '@/components/reports/SavingsRateCard';
+import BestMonthCard from '@/components/reports/BestMonthCard';
+import DaySpendingCard from '@/components/reports/DaySpendingCard';
+import ProjectionCard from '@/components/reports/ProjectionCard';
+import { Card } from '@/components/ui/Card';
 
-type TabId = 'spending' | 'trends' | 'savings' | 'patterns' | 'projection' | 'achievements';
+type Section = 'spending' | 'trends' | 'savings' | 'patterns';
 
-interface TabConfig {
-  id: TabId;
-  label: string;
-  icon: React.ElementType;
-}
-
-const tabs: TabConfig[] = [
-  { id: 'spending', label: 'Gastos', icon: BarChart3 },
-  { id: 'trends', label: 'Tendencias', icon: TrendingUp },
-  { id: 'savings', label: 'Ahorro', icon: PiggyBank },
-  { id: 'patterns', label: 'Patrones', icon: Calendar },
-  { id: 'projection', label: 'Proyección', icon: Brain },
-  { id: 'achievements', label: 'Logros', icon: Trophy },
+const SECTIONS = [
+  { id: 'spending' as Section, label: 'Gastos', icon: BarChart3 },
+  { id: 'trends' as Section, label: 'Tendencia', icon: TrendingUp },
+  { id: 'savings' as Section, label: 'Ahorro', icon: PiggyBank },
+  { id: 'patterns' as Section, label: 'Ritmo', icon: Calendar },
 ];
 
-const ReportsScreen = () => {
+export default function ReportsScreen() {
   const analytics = useFinanceAnalytics();
-  const [activeTab, setActiveTab] = useState<TabId>('spending');
+  const [section, setSection] = useState<Section>('spending');
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="px-4 pt-6 pb-8 space-y-6">
-          {/* Header */}
-          <View className="space-y-2">
-            <Text className="text-3xl font-bold text-foreground">📊 Entiende tu dinero</Text>
-            <Text className="text-muted-foreground">
-              Analiza tus hábitos financieros y toma mejores decisiones.
-            </Text>
-          </View>
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text className="text-2xl font-bold text-foreground">Entiende tu dinero</Text>
+        <Text className="text-sm text-muted-foreground mt-0.5 mb-4">
+          Patrones, comparaciones y proyecciones con tus movimientos.
+        </Text>
 
-          {/* Insights Banner */}
-          <InsightsCard insights={analytics.insights} />
+        <InsightsCard insights={analytics.insights} />
 
-          {/* Custom Tab Bar */}
-          <View className="mt-2">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-              <View className="flex-row gap-1 bg-muted/50 p-1 rounded-lg">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <TouchableOpacity
-                      key={tab.id}
-                      onPress={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "flex-row items-center gap-2 px-4 py-2 rounded-md",
-                        isActive ? "bg-primary shadow-sm" : "bg-transparent"
-                      )}
-                    >
-                      <Icon size={16} className={isActive ? "text-primary-foreground" : "text-muted-foreground"} />
-                      <Text className={cn(
-                        "text-sm font-medium",
-                        isActive ? "text-primary-foreground" : "text-muted-foreground"
-                      )}>
-                        {tab.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </View>
+        <View className="flex-row gap-1 bg-muted rounded-2xl p-1 mt-4 mb-4">
+          {SECTIONS.map((item) => {
+            const Icon = item.icon;
+            const active = section === item.id;
 
-          {/* Tab Content */}
-          <View className="mt-4 space-y-6">
-            {activeTab === 'spending' && (
-              <View className="space-y-6">
-                <View className="flex-row flex-wrap gap-4">
-                  <View className="flex-1 min-w-[48%]">
-                    <TopCategoriesCard 
-                      categories={analytics.topCategories}
-                      message={analytics.topCategoryMessage}
-                    />
-                  </View>
-                  <View className="flex-1 min-w-[48%]">
-                    <FixedVsVariableCard
-                      fixedPercentage={analytics.fixedVsVariableRatio.fixedPercentage}
-                      variablePercentage={analytics.fixedVsVariableRatio.variablePercentage}
-                      message={analytics.fixedVsVariableRatio.committedMessage}
-                    />
-                  </View>
-                </View>
-                <SmallExpensesCard
-                  expenses={analytics.smallExpenses}
-                  total={analytics.smallExpensesTotal}
-                  message={analytics.smallExpensesMessage}
-                />
-              </View>
-            )}
-
-            {activeTab === 'trends' && (
-              <View className="space-y-6">
-                <MonthlyTrendChart
-                  trends={analytics.monthlyTrends}
-                  message={analytics.trendMessage}
-                  negativeStreak={analytics.negativeMonthsStreak}
-                />
-                <MonthComparisonCard
-                  currentMonthExpenses={analytics.monthComparison.currentMonthExpenses}
-                  previousMonthExpenses={analytics.monthComparison.previousMonthExpenses}
-                  difference={analytics.monthComparison.difference}
-                  percentageChange={analytics.monthComparison.percentageChange}
-                  isImprovement={analytics.monthComparison.isImprovement}
-                  message={analytics.monthComparison.message}
-                />
-              </View>
-            )}
-
-            {activeTab === 'savings' && (
-              <View className="space-y-6">
-                <View className="flex-row flex-wrap gap-4">
-                  <View className="flex-1 min-w-[48%]">
-                    <SavingsRateCard
-                      rate={analytics.savingsRate}
-                      level={analytics.savingsRateLevel}
-                      message={analytics.savingsRateMessage}
-                      perHundred={analytics.savingsPerHundred}
-                    />
-                  </View>
-                  <View className="flex-1 min-w-[48%]">
-                    <BestMonthCard
-                      bestMonth={analytics.bestMonth}
-                      positiveStreak={analytics.positiveMonthsStreak}
-                    />
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'patterns' && (
-              <View className="space-y-6">
-                <DaySpendingCard
-                  daySpending={analytics.daySpending}
-                  highestDay={analytics.highestSpendingDay}
-                  message={analytics.daySpendingMessage}
-                  weekendRatio={analytics.weekendVsWeekdayRatio}
-                />
-              </View>
-            )}
-
-            {activeTab === 'projection' && (
-              <View className="space-y-6">
-                <View className="flex-row flex-wrap gap-4">
-                  <View className="flex-1 min-w-[48%]">
-                    <ProjectionCard
-                      projectedBalance={analytics.projection.projectedBalance}
-                      daysRemaining={analytics.projection.daysRemaining}
-                      dailyAverageSpending={analytics.projection.dailyAverageSpending}
-                      projectedSpending={analytics.projection.projectedSpending}
-                      isPositive={analytics.projection.isPositive}
-                      message={analytics.projection.message}
-                    />
-                  </View>
-                  <View className="flex-1 min-w-[48%]">
-                    <MonthComparisonCard
-                      currentMonthExpenses={analytics.monthComparison.currentMonthExpenses}
-                      previousMonthExpenses={analytics.monthComparison.previousMonthExpenses}
-                      difference={analytics.monthComparison.difference}
-                      percentageChange={analytics.monthComparison.percentageChange}
-                      isImprovement={analytics.monthComparison.isImprovement}
-                      message={analytics.monthComparison.message}
-                    />
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'achievements' && (
-              <View className="space-y-6">
-                <BestMonthCard
-                  bestMonth={analytics.bestMonth}
-                  positiveStreak={analytics.positiveMonthsStreak}
-                />
-              </View>
-            )}
-          </View>
+            return (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => setSection(item.id)}
+                className={cn(
+                  'flex-1 rounded-xl py-2 items-center',
+                  active ? 'bg-primary' : 'bg-transparent',
+                )}
+              >
+                <Icon size={15} color={active ? '#ffffff' : '#64748b'} />
+                <Text
+                  className={cn(
+                    'text-[11px] font-semibold mt-0.5',
+                    active ? 'text-white' : 'text-muted-foreground',
+                  )}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
+
+        {section === 'spending' && (
+          <View>
+            <TopCategoriesCard
+              categories={analytics.topCategories}
+              message={analytics.topCategoryMessage}
+            />
+            <View className="h-4" />
+            <FixedVsVariableCard
+              fixedPercentage={analytics.fixedVsVariableRatio.fixedPercentage}
+              variablePercentage={analytics.fixedVsVariableRatio.variablePercentage}
+              message={analytics.fixedVsVariableRatio.committedMessage}
+            />
+            <View className="h-4" />
+            <SmallExpensesCard
+              expenses={analytics.smallExpenses}
+              total={analytics.smallExpensesTotal}
+              message={analytics.smallExpensesMessage}
+            />
+          </View>
+        )}
+
+        {section === 'trends' && (
+          <View>
+            <MonthlyTrendChart
+              trends={analytics.monthlyTrends}
+              message={analytics.trendMessage}
+              negativeStreak={analytics.negativeMonthsStreak}
+            />
+            <View className="h-4" />
+            <MonthComparisonCard {...analytics.monthComparison} />
+          </View>
+        )}
+
+        {section === 'savings' && (
+          <View>
+            <SavingsRateCard
+              rate={analytics.savingsRate}
+              level={analytics.savingsRateLevel}
+              message={analytics.savingsRateMessage}
+              perHundred={analytics.savingsPerHundred}
+            />
+            <View className="h-4" />
+            <BestMonthCard
+              bestMonth={analytics.bestMonth}
+              positiveStreak={analytics.positiveMonthsStreak}
+            />
+          </View>
+        )}
+
+        {section === 'patterns' && (
+          <View>
+            <DaySpendingCard
+              daySpending={analytics.daySpending}
+              highestDay={analytics.highestSpendingDay}
+              message={analytics.daySpendingMessage}
+              weekendRatio={analytics.weekendVsWeekdayRatio}
+            />
+            <View className="h-4" />
+            <ProjectionCard {...analytics.projection} />
+          </View>
+        )}
+
+        <Card className="mt-4">
+          <Text className="text-xs text-muted-foreground">
+            Los cálculos usan únicamente los movimientos que has registrado. Las proyecciones
+            asumen que mantienes tu ritmo actual de gasto.
+          </Text>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
-};
-
-export default ReportsScreen;
+}

@@ -1,9 +1,8 @@
-// src/components/finance/BestMonthCard.tsx
 import { View, Text } from 'react-native';
-import { Trophy, Flame, Star } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Trophy, Flame, Star } from 'lucide-react-native';
 import { usePrivacy } from '@/contexts/PrivacyContext';
-import { cn } from '@/lib/utils';
+import { Card, CardHeader, EmptyState } from '@/components/ui/Card';
 
 interface BestMonthCardProps {
   bestMonth: {
@@ -15,117 +14,100 @@ interface BestMonthCardProps {
   positiveStreak: number;
 }
 
-const MONTH_NAMES: Record<string, string> = {
-  'Ene': 'Enero',
-  'Feb': 'Febrero',
-  'Mar': 'Marzo',
-  'Abr': 'Abril',
-  'May': 'Mayo',
-  'Jun': 'Junio',
-  'Jul': 'Julio',
-  'Ago': 'Agosto',
-  'Sep': 'Septiembre',
-  'Oct': 'Octubre',
-  'Nov': 'Noviembre',
-  'Dic': 'Diciembre',
+const FULL_MONTHS: Record<string, string> = {
+  Ene: 'Enero',
+  Feb: 'Febrero',
+  Mar: 'Marzo',
+  Abr: 'Abril',
+  May: 'Mayo',
+  Jun: 'Junio',
+  Jul: 'Julio',
+  Ago: 'Agosto',
+  Sep: 'Septiembre',
+  Oct: 'Octubre',
+  Nov: 'Noviembre',
+  Dic: 'Diciembre',
 };
 
-const BestMonthCard = ({ bestMonth, positiveStreak }: BestMonthCardProps) => {
+export default function BestMonthCard({ bestMonth, positiveStreak }: BestMonthCardProps) {
   const { formatAmount } = usePrivacy();
 
   return (
-    <LinearGradient
-      colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      className="bg-card rounded-2xl overflow-hidden border border-border"
-    >
-      {/* Header with gradient */}
-      <LinearGradient
-        colors={['rgba(99,102,241,0.2)', 'rgba(168,85,247,0.2)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        className="p-5"
-      >
-        <View className="flex-row items-center gap-2">
-          <Text className="text-lg font-semibold text-foreground">🏆 Tu mejor mes</Text>
-        </View>
-      </LinearGradient>
+    <Card>
+      <CardHeader title="Tu mejor mes" subtitle="El mes que más ahorraste" />
 
-      <View className="p-5 space-y-4">
-        {bestMonth ? (
-          <>
-            {/* Trophy display */}
-            <View className="items-center py-4">
-              <LinearGradient
-                colors={['#facc15', '#f59e0b']} // yellow-400 to amber-500
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                className="w-20 h-20 rounded-full items-center justify-center mb-3"
-              >
-                <Trophy size={40} color="white" />
-              </LinearGradient>
-              <Text className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                {MONTH_NAMES[bestMonth.monthLabel] || bestMonth.monthLabel}
-              </Text>
-              <Text className="text-sm text-muted-foreground">Tu mes más ahorrador</Text>
-            </View>
+      {bestMonth ? (
+        <View>
+          <View className="items-center py-3">
+            <LinearGradient
+              colors={['#facc15', '#f59e0b']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ width: 64, height: 64, borderRadius: 32 }}
+              className="items-center justify-center mb-3"
+            >
+              <Trophy size={32} color="#ffffff" />
+            </LinearGradient>
 
-            {/* Stats - two columns using flex row */}
-            <View className="flex-row gap-3">
-              <View className="flex-1 bg-income/10 rounded-xl p-4 items-center">
-                <Star size={20} className="text-income mb-2" />
-                <Text className="text-2xl font-bold text-income hide-amount">
-                  {formatAmount(bestMonth.savings)}
-                </Text>
-                <Text className="text-xs text-muted-foreground text-center">Ahorro logrado</Text>
-              </View>
-              <View className="flex-1 bg-primary/20 rounded-xl p-4 items-center">
-                <Trophy size={20} className="text-primary mb-2" />
-                <Text className="text-2xl font-bold text-primary">
-                  {bestMonth.savingsRate.toFixed(0)}%
-                </Text>
-                <Text className="text-xs text-muted-foreground text-center">Tasa de ahorro</Text>
-              </View>
-            </View>
-          </>
-        ) : (
-          <View className="items-center py-8">
-            <View className="w-16 h-16 rounded-full bg-muted items-center justify-center mb-3">
-              <Trophy size={32} className="text-muted-foreground" />
-            </View>
-            <Text className="text-muted-foreground text-center">
-              Aún no hay datos suficientes para determinar tu mejor mes.
+            <Text className="text-2xl font-bold text-foreground">
+              {FULL_MONTHS[bestMonth.monthLabel] ?? bestMonth.monthLabel}
             </Text>
+            <Text className="text-xs text-muted-foreground mt-1">Tu mes más ahorrador</Text>
           </View>
-        )}
 
-        {/* Streak */}
-        {positiveStreak > 0 && (
-          <LinearGradient
-            colors={['rgba(34,197,94,0.2)', 'rgba(99,102,241,0.2)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            className="rounded-xl p-4"
-          >
-            <View className="flex-row items-center gap-3">
-              <View className="p-2 bg-income/30 rounded-lg">
-                <Flame size={24} className="text-income" />
-              </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-income">
-                  🔥 Racha de {positiveStreak} {positiveStreak === 1 ? 'mes' : 'meses'}
-                </Text>
-                <Text className="text-sm text-muted-foreground">
-                  Consecutivos en positivo. ¡Sigue así!
-                </Text>
-              </View>
+          <View className="flex-row gap-3">
+            <View className="flex-1 rounded-2xl bg-income/10 p-4 items-center">
+              <Star size={20} color="#22c55e" />
+              <Text className="text-base font-bold text-income mt-2" numberOfLines={1}>
+                {formatAmount(bestMonth.savings)}
+              </Text>
+              <Text className="text-[11px] text-muted-foreground text-center mt-1">
+                Ahorro logrado
+              </Text>
             </View>
-          </LinearGradient>
-        )}
-      </View>
-    </LinearGradient>
-  );
-};
 
-export default BestMonthCard;
+            <View className="flex-1 rounded-2xl bg-primary/10 p-4 items-center">
+              <Trophy size={20} color="#6366f1" />
+              <Text className="text-base font-bold text-primary mt-2">
+                {Math.round(bestMonth.savingsRate)}%
+              </Text>
+              <Text className="text-[11px] text-muted-foreground text-center mt-1">
+                Tasa de ahorro
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <EmptyState
+          emoji="🏆"
+          title="Aún no hay un mejor mes"
+          description="Necesitas al menos un mes en positivo para ver esta tarjeta."
+        />
+      )}
+
+      {positiveStreak > 0 && (
+        <LinearGradient
+          colors={['rgba(34,197,94,0.15)', 'rgba(99,102,241,0.15)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ borderRadius: 16 }}
+          className="p-4 mt-4"
+        >
+          <View className="flex-row items-center gap-3">
+            <View className="w-10 h-10 rounded-2xl bg-income/20 items-center justify-center">
+              <Flame size={22} color="#22c55e" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-semibold text-income">
+                🔥 Racha de {positiveStreak} {positiveStreak === 1 ? 'mes' : 'meses'}
+              </Text>
+              <Text className="text-xs text-muted-foreground">
+                Consecutivos en positivo. ¡Sigue así!
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
+      )}
+    </Card>
+  );
+}

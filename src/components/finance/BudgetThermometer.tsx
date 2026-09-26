@@ -1,144 +1,148 @@
-// src/components/finance/BudgetThermometer.tsx
 import { View, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Flame, Snowflake, AlertTriangle } from 'lucide-react-native';
-import { useFinance } from '../../contexts/FinanceContext';
+import { useFinance } from '../../contexts/FinanceContext.graphql';
 import { usePrivacy } from '../../contexts/PrivacyContext';
 import { cn } from '../../lib/utils';
+
+type Status = {
+  label: string;
+  emoji: string;
+  gradient: readonly [string, string];
+  bgColor: string;
+  hex: string;
+  icon: typeof Flame;
+  message: string;
+};
 
 const BudgetThermometer = () => {
   const { summary } = useFinance();
   const { formatAmount, isIncognito } = usePrivacy();
 
-  // Calculate percentage of income spent
-  const spentPercentage = summary.totalIncome > 0
-    ? Math.min((summary.totalExpenses / summary.totalIncome) * 100, 100)
-    : 0;
+  const spentPercentage =
+    summary.totalIncome > 0 ? Math.min((summary.totalExpenses / summary.totalIncome) * 100, 100) : 0;
 
-  // Determine status and colors
-  const getStatus = () => {
+  const getStatus = (): Status => {
     if (spentPercentage <= 50) {
       return {
         label: '¡Vas muy bien!',
         emoji: '😎',
-        gradient: ['hsl(var(--income))', 'hsl(142 76% 46%)'] as const,
-        bgColor: 'bg-income/20',
-        textColor: 'text-income',
+        gradient: ['#22c55e', '#16a34a'],
+        bgColor: 'bg-income/15',
+        hex: '#22c55e',
         icon: Snowflake,
-        message: 'Tienes buen control de tus gastos',
+        message: 'Buen control de tus gastos',
       };
-    } else if (spentPercentage <= 75) {
+    }
+    if (spentPercentage <= 75) {
       return {
         label: 'Cuidado',
         emoji: '🤔',
-        gradient: ['hsl(var(--expense-variable))', 'hsl(25 95% 53%)'] as const,
-        bgColor: 'bg-expense-variable/20',
-        textColor: 'text-expense-variable',
+        gradient: ['#f59e0b', '#ea580c'],
+        bgColor: 'bg-expense-variable/15',
+        hex: '#f59e0b',
         icon: AlertTriangle,
-        message: 'Ya gastaste más de la mitad',
+        message: 'Ya comprometiste más de la mitad',
       };
-    } else if (spentPercentage <= 90) {
+    }
+    if (spentPercentage <= 90) {
       return {
         label: '¡Ojo!',
         emoji: '😰',
-        gradient: ['hsl(var(--expense-fixed))', 'hsl(0 84% 60%)'] as const,
-        bgColor: 'bg-expense-fixed/20',
-        textColor: 'text-expense-fixed',
+        gradient: ['#ef4444', '#dc2626'],
+        bgColor: 'bg-expense-fixed/15',
+        hex: '#ef4444',
         icon: Flame,
-        message: 'Te queda poco presupuesto',
-      };
-    } else {
-      return {
-        label: '¡Límite!',
-        emoji: '🔥',
-        gradient: ['hsl(0 84% 60%)', 'hsl(0 72% 51%)'] as const,
-        bgColor: 'bg-red-500/20',
-        textColor: 'text-red-400',
-        icon: Flame,
-        message: 'Has agotado casi todo tu ingreso',
+        message: 'Te queda poco margen',
       };
     }
+    return {
+      label: '¡Límite!',
+      emoji: '🔥',
+      gradient: ['#ef4444', '#b91c1c'],
+      bgColor: 'bg-destructive/15',
+      hex: '#dc2626',
+      icon: Flame,
+      message: 'Gastaste casi todo tu ingreso',
+    };
   };
 
   const status = getStatus();
   const Icon = status.icon;
   const remaining = summary.totalIncome - summary.totalExpenses;
+  const hasData = summary.totalIncome > 0 || summary.totalExpenses > 0;
+
+  if (!hasData) {
+    return (
+      <View className="rounded-3xl border border-border bg-card p-5">
+        <Text className="text-base font-semibold text-foreground">Termómetro de gastos</Text>
+        <Text className="text-sm text-muted-foreground mt-1">
+          Registra un ingreso y algunos gastos para ver cuánto de tu dinero ya está comprometido.
+        </Text>
+      </View>
+    );
+  }
 
   return (
-    <View className="bg-card rounded-2xl overflow-hidden shadow-sm border border-border">
-      <View className="p-5">
-        {/* Header */}
-        <View className="flex-row justify-between items-center mb-4">
-          <View className="flex-row items-center gap-3">
-            <View className={cn('p-2 rounded-xl', status.bgColor)}>
-              <Icon size={20} className={status.textColor} />
-            </View>
-            <View>
-              <Text className="font-semibold text-foreground text-base">
-                Termómetro de Gastos
-              </Text>
-              <Text className="text-xs text-muted-foreground">{status.message}</Text>
-            </View>
+    <View className="rounded-3xl border border-border bg-card p-5">
+      <View className="flex-row justify-between items-center mb-4">
+        <View className="flex-row items-center gap-3 flex-1 min-w-0">
+          <View className={cn('w-10 h-10 rounded-2xl items-center justify-center', status.bgColor)}>
+            <Icon size={20} color={status.hex} />
           </View>
-          <View className="items-end">
-            <Text className="text-2xl">{status.emoji}</Text>
-            <Text className={cn('text-sm font-medium', status.textColor)}>
-              {status.label}
+          <View className="flex-1">
+            <Text className="font-semibold text-foreground text-base">Termómetro de gastos</Text>
+            <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+              {status.message}
             </Text>
           </View>
         </View>
-
-        {/* Thermometer Bar */}
-        <View className="relative my-2">
-          <View className="h-8 bg-muted/50 rounded-full overflow-hidden">
-            <LinearGradient
-              colors={status.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                width: `${spentPercentage}%`,
-                height: '100%',
-                borderRadius: 999,
-              }}
-            />
-          </View>
-
-          {/* Markers (0%, 50%, 100%) */}
-          <View className="absolute inset-x-0 top-0 h-8 flex-row justify-between items-center px-2 pointer-events-none">
-            <Text className="text-xs font-medium text-foreground/70">0%</Text>
-            <Text className="text-xs font-medium text-foreground/70">50%</Text>
-            <Text className="text-xs font-medium text-foreground/70">100%</Text>
-          </View>
-
-          {/* Vertical marker at 50% */}
-          <View className="absolute left-1/2 top-0 w-px h-8 bg-foreground/20" />
+        <View className="items-end ml-2">
+          <Text className="text-xl">{status.emoji}</Text>
+          <Text className="text-xs font-semibold" style={{ color: status.hex }}>
+            {status.label}
+          </Text>
         </View>
+      </View>
 
-        {/* Stats */}
-        <View className="flex-row justify-between items-center mt-4 pt-4 border-t border-border/50">
-          <View>
-            <Text className="text-xs text-muted-foreground">Gastado</Text>
-            <Text className={cn('text-lg font-bold hide-amount', status.textColor)}>
-              {formatAmount(summary.totalExpenses)}
-            </Text>
-          </View>
-          <View className="items-center">
-            <Text className="text-xs text-muted-foreground">De tus ingresos</Text>
-            <Text className="text-lg font-bold text-foreground">
-              {isIncognito ? '**%' : `${spentPercentage.toFixed(0)}%`}
-            </Text>
-          </View>
-          <View className="items-end">
-            <Text className="text-xs text-muted-foreground">Te queda</Text>
-            <Text
-              className={cn(
-                'text-lg font-bold hide-amount',
-                remaining >= 0 ? 'text-income' : 'text-expense-fixed'
-              )}
-            >
-              {formatAmount(remaining)}
-            </Text>
-          </View>
+      <View className="relative my-2">
+        <View className="h-3 bg-muted rounded-full overflow-hidden">
+          <LinearGradient
+            colors={status.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ width: `${Math.max(spentPercentage, 2)}%`, height: '100%', borderRadius: 999 }}
+          />
+        </View>
+      </View>
+
+      <View className="flex-row justify-between mt-2">
+        <Text className="text-[10px] text-muted-foreground">0%</Text>
+        <Text className="text-[10px] text-muted-foreground">50%</Text>
+        <Text className="text-[10px] text-muted-foreground">100%</Text>
+      </View>
+
+      <View className="flex-row justify-between items-end mt-4 pt-4 border-t border-border">
+        <View>
+          <Text className="text-xs text-muted-foreground">Gastado</Text>
+          <Text className="text-base font-bold" style={{ color: status.hex }}>
+            {formatAmount(summary.totalExpenses)}
+          </Text>
+        </View>
+        <View className="items-center">
+          <Text className="text-xs text-muted-foreground">De tus ingresos</Text>
+          <Text className="text-base font-bold text-foreground">
+            {isIncognito ? '••%' : `${spentPercentage.toFixed(0)}%`}
+          </Text>
+        </View>
+        <View className="items-end">
+          <Text className="text-xs text-muted-foreground">Te queda</Text>
+          <Text
+            className="text-base font-bold"
+            style={{ color: remaining >= 0 ? '#22c55e' : '#ef4444' }}
+          >
+            {formatAmount(remaining)}
+          </Text>
         </View>
       </View>
     </View>

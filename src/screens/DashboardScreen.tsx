@@ -1,19 +1,7 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Modal,
-  SafeAreaView,
-  Platform,
-} from 'react-native';
-import { TrendingUp, TrendingDown, CreditCard, Plus, Scan } from 'lucide-react-native';
-import { useFinance, TransactionCategory } from '../contexts/FinanceContext.graphql';
-import { useFinance as useFinanceLocal, TransactionCategory as TransactionCategoryLocal } from '../contexts/FinanceContext';
-import { useAuth } from '../contexts/AuthContext';
-import DashboardLayout from '../components/layout/DashboardLayout'; // Lo adaptaremos
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { TrendingUp, CreditCard, Wallet, Plus, Scan } from 'lucide-react-native';
+import DashboardLayout from '../components/layout/DashboardLayout';
 import TopBar from '../components/layout/TopBar';
 import BalanceCard from '../components/finance/BalanceCard';
 import SummaryCard from '../components/finance/SummaryCard';
@@ -23,62 +11,67 @@ import QuickInsightsCarousel from '../components/finance/QuickInsightsCarousel';
 import IncomeExpenseChart from '../components/finance/IncomeExpenseChart';
 import RecentTransactions from '../components/finance/RecentTransactions';
 import InvoiceHistory from '../components/finance/InvoiceHistory';
-import AddTransactionModal from '../components/finance/AddTransactionModal';
+import TransactionForm from '../components/finance/TransactionForm';
 import ScanTicketModal from '../components/finance/ScanTicketModal';
+import { useFinance } from '../contexts/FinanceContext.graphql';
+import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { toast } from '../hooks/use-toast';
+import { formatAmount } from '../lib/format';
 
-const DashboardScreen = () => {
-  const { summary, isLoading, addTransaction } = useFinance();
-  // const { summary: summaryLocal, isLoading: isLoadingLocal, addTransaction: addTransactionLocal } = useFinanceLocal();
-  // const { isDemo } = useAuth();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+export default function DashboardScreen() {
+  const { summary, isLoading, error, addTransaction, refetch } = useFinance();
+  const { user } = useAuth();
+  const { currency, language, t } = useSettings();
 
-  const handleScanComplete = (data: {
+  const [formVisible, setFormVisible] = useState(false);
+  const [scanVisible, setScanVisible] = useState(false);
+
+  const greet = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return t('dashboard.greeting.morning');
+    if (hour < 19) return t('dashboard.greeting.afternoon');
+    return t('dashboard.greeting.evening');
+  };
+
+  const handleScanComplete = async (data: {
     amount: number;
     description: string;
     date: string;
-    invoiceData?: {
-      rfc?: string;
-      uuid?: string;
-      vendor?: string;
-      rawQRData?: string;
-      scannedAt?: string;
-    };
+    invoiceData?: { rfc?: string; uuid?: string; vendor?: string; rawQRData?: string };
   }) => {
-    // if (isDemo) {
-    //   addTransactionLocal({
-    //     type: 'VARIABLE_EXPENSE',
-    //     category: 'shopping' as TransactionCategoryLocal,
-    //     amount: data.amount,
-    //     description: data.description,
-    //     date: data.date,
-    //     isRecurring: false,
-    //     invoiceData: data.invoiceData,
-    //   });
-    // } else {
-      addTransaction({
+    try {
+      await addTransaction({
         type: 'VARIABLE_EXPENSE',
-        category: 'shopping' as TransactionCategory,
+        category: 'shopping',
         amount: data.amount,
         description: data.description,
         date: data.date,
         isRecurring: false,
+        isPaid: true,
         invoiceData: data.invoiceData,
       });
-    // }
-    // toast({
-    //   title: '¡Ticket escaneado!',
-    //   description: `Gasto de $${data.amount.toLocaleString()} registrado`,
-    // });
+
+      toast({
+        title: '¡Ticket escaneado!',
+        description: `Gasto de ${formatAmount(data.amount, currency, language)} registrado`,
+        variant: 'success',
+      });
+    } catch {
+      toast({
+        title: 'No se pudo guardar el gasto',
+        description: 'Revisa tu conexión e inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    }
   };
 
-  // if (isLoadingLocal || isLoading) {
-  if (isLoading) {
+  if (isLoading && summary.totalIncome === 0 && summary.totalExpenses === 0) {
     return (
       <DashboardLayout>
-        <View className="flex-1 items-center justify-center h-[60vh]">
+        <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#6366f1" />
-          <Text className="text-muted-foreground mt-4">Cargando tus finanzas...</Text>
+          <Text className="text-muted-foreground mt-4">Cargando tus finanzas…</Text>
         </View>
       </DashboardLayout>
     );
@@ -89,121 +82,136 @@ const DashboardScreen = () => {
       <DashboardLayout>
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingBottom: 80 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isLoading} onRefresh={() => void refetch()} tintColor="#6366f1" />
+          }
         >
-          {/* Top Bar */}
-          <TopBar />
+          <TopBar greeting={greet()} name={user?.name} />
 
-          {/* Balance Card */}
+          {error && (
+            <View className="mx-4 mt-3 rounded-2xl bg-destructive/10 border border-destructive/25 p-4">
+              <Text className="text-sm text-destructive font-semibold">
+                No pudimos cargar tus datos
+              </Text>
+              <Text className="text-xs text-destructive/80 mt-1">
+                Verifica que el backend esté corriendo e inténtalo de nuevo.
+              </Text>
+              <TouchableOpacity
+                onPress={() => void refetch()}
+                className="mt-3 rounded-xl bg-destructive py-2.5 items-center"
+              >
+                <Text className="text-white text-sm font-semibold">{t('common.retry')}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View className="px-4 mt-2">
-            {/* <BalanceCard balance={isDemo ? summaryLocal.totalBalance : summary.totalBalance} /> */}
             <BalanceCard balance={summary.totalBalance} />
           </View>
 
-          {/* Budget Thermometer */}
           <View className="px-4 mt-4">
             <BudgetThermometer />
           </View>
 
-          {/* Daily Spending Capacity */}
           <View className="px-4 mt-4">
             <DailySpendingCapacity />
           </View>
 
-          {/* Summary Cards (grid) */}
           <View className="px-4 mt-4">
-            <View className="flex-row flex-wrap justify-between">
-              <View className="w-[32%]">
-                {/* // amount={isDemo ? summaryLocal.totalIncome : summary.totalIncome} */}
+            <Text className="text-base font-bold text-foreground mb-3">Resumen del periodo</Text>
+            <View className="flex-row gap-3">
+              <View className="flex-1">
                 <SummaryCard
-                  title="💰 Lo que entra"
+                  title="Lo que entra"
                   amount={summary.totalIncome}
                   icon={TrendingUp}
-                  color="green"
-                  subtitle="Tu sueldo y extras"
+                  tone="income"
+                  subtitle="Sueldo, bonos y extras"
                 />
               </View>
-              {/* amount={isDemo ? summaryLocal.totalFixedExpenses : summary.totalFixedExpenses} */}
-              <View className="w-[32%]">
+              <View className="flex-1">
                 <SummaryCard
-                  title="🏠 Lo obligatorio"
+                  title="Lo obligatorio"
                   amount={summary.totalFixedExpenses}
                   icon={CreditCard}
-                  color="orange"
-                  subtitle="Renta, servicios, suscripciones"
+                  tone="fixed"
+                  subtitle="Arriendo, servicios, seguros"
                 />
               </View>
-              <View className="w-[32%]">
-                {/* amount={isDemo ? summaryLocal.totalVariableExpenses : summary.totalVariableExpenses} */}
+              <View className="flex-1">
                 <SummaryCard
-                  title="🛒 El día a día"
+                  title="El día a día"
                   amount={summary.totalVariableExpenses}
-                  icon={TrendingDown}
-                  color="yellow"
+                  icon={Wallet}
+                  tone="variable"
                   subtitle="Comida, transporte, salidas"
                 />
               </View>
             </View>
           </View>
 
-          {/* Quick Insights Carousel */}
-          <View className="px-4 mt-4">
-            <Text className="text-lg font-semibold text-foreground mb-3">
-              📊 Vista Rápida
-            </Text>
+          <View className="px-4 mt-6">
+            <Text className="text-base font-bold text-foreground mb-3">Vista rápida</Text>
             <QuickInsightsCarousel />
           </View>
 
-          {/* Charts & Activity */}
-          <View className="px-4 mt-4">
+          <View className="px-4 mt-6">
             <IncomeExpenseChart />
           </View>
+
           <View className="px-4 mt-4">
             <RecentTransactions />
           </View>
 
-          {/* Invoice History */}
           <View className="px-4 mt-4 mb-8">
             <InvoiceHistory />
           </View>
         </ScrollView>
       </DashboardLayout>
 
-      {/* Floating Action Button (FAB) */}
-      <View className="absolute bottom-6 right-4 z-50">
-        <View className="flex-row space-x-3">
-          <TouchableOpacity
-            onPress={() => setIsScanModalOpen(true)}
-            className="bg-accent rounded-full w-14 h-14 items-center justify-center shadow-lg"
-            activeOpacity={0.8}
-          >
-            <Scan size={24} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setIsModalOpen(true)}
-            className="bg-primary rounded-full w-14 h-14 items-center justify-center shadow-lg"
-            activeOpacity={0.8}
-          >
-            <Plus size={24} color="white" />
-          </TouchableOpacity>
-        </View>
+      <View className="absolute bottom-7 right-4 flex-row gap-3">
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Escanear factura"
+          onPress={() => setScanVisible(true)}
+          className="w-14 h-14 rounded-full bg-accent items-center justify-center"
+          style={{
+            shadowColor: '#a855f7',
+            shadowOpacity: 0.35,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 6,
+          }}
+        >
+          <Scan size={24} color="#ffffff" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Registrar movimiento"
+          onPress={() => setFormVisible(true)}
+          className="w-14 h-14 rounded-full bg-primary items-center justify-center"
+          style={{
+            shadowColor: '#6366f1',
+            shadowOpacity: 0.35,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
+        >
+          <Plus size={26} color="#ffffff" />
+        </TouchableOpacity>
       </View>
 
-      {/* Add Transaction Modal */}
-      <AddTransactionModal
-        visible={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
+      <TransactionForm visible={formVisible} onClose={() => setFormVisible(false)} />
 
-      {/* Scan Ticket Modal */}
       <ScanTicketModal
-        visible={isScanModalOpen}
-        onClose={() => setIsScanModalOpen(false)}
+        visible={scanVisible}
+        onClose={() => setScanVisible(false)}
         onScanComplete={handleScanComplete}
       />
     </>
   );
-};
-
-export default DashboardScreen;
+}

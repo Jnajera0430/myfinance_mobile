@@ -1,28 +1,3 @@
-import { gql } from '@apollo/client';
-// ==================== FRAGMENTS ====================
-export const CATEGORY_FRAGMENT = gql`
-  fragment CategoryFields on Category {
-    id
-    name
-    type
-    icon
-    color
-  }
-`;
-// ==================== QUERIES ====================
-export const CATEGORIES_QUERY = gql`
-  query Categories {
-    categories {
-      ...CategoryFields
-    }
-  }
-  ${CATEGORY_FRAGMENT}
-`;
-export const CATEGORIES_BY_TYPE_QUERY = gql`
-  query CategoriesByType($type: String!) {
-    categoriesByType(type: $type) {
-      ...CategoryFields
-    }
-  }
-  ${CATEGORY_FRAGMENT}
-`;
+// Las categorias son un catalogo fijo del dominio (ver finance_backend/src/common/enums/category.enum.ts).
+// El backend no expone consultas GraphQL de categorias: se resuelven en el cliente.
+export * from '../../lib/categories';

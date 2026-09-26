@@ -1,206 +1,191 @@
-// src/screens/RegisterScreen.tsx
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
+  ScrollView,
   Keyboard,
-  Alert,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { NavigationProp, useNavigation } from '@react-navigation/native';
 import { Eye, EyeOff, UserPlus } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import type { AuthStackParamList } from '../navigation/AuthNavigator';
+import { Button } from '../components/ui/Button';
+import { cn } from '../lib/utils';
 
-const RegisterScreen = () => {
+const MIN_PASSWORD_LENGTH = 8;
+
+export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const { register, isLoading } = useAuth();
-  const navigation = useNavigation();
+  const [submitting, setSubmitting] = useState(false);
+  const { register } = useAuth();
+  const navigation = useNavigation<NavigationProp<AuthStackParamList>>();
+
+  const checks = useMemo(
+    () => [
+      { label: 'Mínimo 8 caracteres', ok: password.length >= MIN_PASSWORD_LENGTH },
+      { label: 'Al menos una letra', ok: /[A-Za-z]/.test(password) },
+      { label: 'Al menos un número', ok: /[0-9]/.test(password) },
+      { label: 'Las contraseñas coinciden', ok: password.length > 0 && password === confirmPassword },
+    ],
+    [password, confirmPassword],
+  );
+
+  const isValid = checks.every((check) => check.ok) && name.trim().length >= 2;
 
   const handleSubmit = async () => {
     Keyboard.dismiss();
     setError('');
 
-    if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden.');
+    if (name.trim().length < 2) {
+      setError('Escribe tu nombre.');
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
+    if (!isValid) {
+      setError('Revisa los requisitos de la contraseña.');
       return;
     }
 
+    setSubmitting(true);
     const success = await register(email, password, name);
-    if (success) {
-      navigation.navigate('Dashboard' as never); // reemplaza con tu ruta principal
-    } else {
-      setError('No se pudo crear la cuenta. Intenta con otro email.');
+    setSubmitting(false);
+
+    if (!success) {
+      setError('No pudimos crear la cuenta. Prueba con otro correo.');
     }
   };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <SafeAreaView className="flex-1 bg-background">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1"
+      >
+        <ScrollView
+          className="flex-1 bg-background"
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 24 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View className="flex-1 items-center justify-center p-4 relative">
-            {/* Efectos de fondo (blur) */}
-            <View className="absolute inset-0 overflow-hidden">
-              <View className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-              <View className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
+          <View className="w-full max-w-md self-center bg-card rounded-3xl border border-border p-6">
+            <LinearGradient
+              colors={['#6366f1', '#a855f7']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ width: 48, height: 48, borderRadius: 16 }}
+              className="items-center justify-center mb-4"
+            >
+              <UserPlus size={24} color="#ffffff" />
+            </LinearGradient>
+
+            <Text className="text-2xl font-bold text-foreground">Crea tu cuenta</Text>
+            <Text className="text-muted-foreground text-sm mt-1 mb-6">
+              Empieza a controlar tus ingresos y gastos hoy.
+            </Text>
+
+            <Text className="text-sm font-medium text-foreground mb-1.5">Nombre</Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Tu nombre"
+              placeholderTextColor="#94a3b8"
+              className="bg-white border border-border rounded-2xl px-4 py-3 text-base text-foreground mb-4"
+            />
+
+            <Text className="text-sm font-medium text-foreground mb-1.5">Correo</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="tu@email.com"
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              placeholderTextColor="#94a3b8"
+              className="bg-white border border-border rounded-2xl px-4 py-3 text-base text-foreground mb-4"
+            />
+
+            <Text className="text-sm font-medium text-foreground mb-1.5">Contraseña</Text>
+            <View className="relative mb-4">
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                placeholderTextColor="#94a3b8"
+                className="bg-white border border-border rounded-2xl px-4 py-3 pr-12 text-base text-foreground"
+              />
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-0 h-full justify-center p-2"
+              >
+                {showPassword ? <EyeOff size={18} color="#64748b" /> : <Eye size={18} color="#64748b" />}
+              </TouchableOpacity>
             </View>
 
-            {/* Tarjeta tipo glass */}
-            <BlurView
-              intensity={80}
-              tint="light"
-              className="w-full max-w-md rounded-2xl overflow-hidden p-6 shadow-lg"
+            <Text className="text-sm font-medium text-foreground mb-1.5">Confirmar contraseña</Text>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="••••••••"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              placeholderTextColor="#94a3b8"
+              className="bg-white border border-border rounded-2xl px-4 py-3 text-base text-foreground mb-4"
+            />
+
+            <View className="mb-4">
+              {checks.map((check) => (
+                <View key={check.label} className="flex-row items-center mb-1">
+                  <Text className={cn('mr-2 text-xs', check.ok ? 'text-income' : 'text-muted-foreground')}>
+                    {check.ok ? '✓' : '○'}
+                  </Text>
+                  <Text className={cn('text-xs', check.ok ? 'text-income' : 'text-muted-foreground')}>
+                    {check.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {!!error && (
+              <View className="bg-destructive/10 border border-destructive/25 rounded-2xl px-4 py-3 mb-4">
+                <Text className="text-destructive text-sm">{error}</Text>
+              </View>
+            )}
+
+            {submitting ? (
+              <View className="flex-row items-center justify-center rounded-2xl bg-primary py-3.5">
+                <ActivityIndicator color="#ffffff" />
+                <Text className="ml-2 text-white font-semibold">Creando cuenta…</Text>
+              </View>
+            ) : (
+              <Button label="Crear cuenta" onPress={handleSubmit} disabled={!isValid} />
+            )}
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Login')}
+              className="mt-6 items-center"
             >
-              {/* Cabecera con ícono */}
-              <View className="items-center space-y-2 mb-4">
-                <LinearGradient
-                  colors={['#3b82f6', '#a855f7']} // from-primary to-accent
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  className="w-12 h-12 rounded-xl items-center justify-center mb-4"
-                >
-                  <UserPlus size={24} color="white" />
-                </LinearGradient>
-                <Text className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Crear Cuenta
-                </Text>
-                <Text className="text-muted-foreground text-center">
-                  Regístrate para comenzar a controlar tus finanzas
-                </Text>
-              </View>
-
-              {/* Formulario */}
-              <View className="space-y-4">
-                {/* Campo Nombre */}
-                <View className="space-y-2">
-                  <Text className="text-foreground text-sm font-medium">Nombre</Text>
-                  <TextInput
-                    placeholder="Tu nombre"
-                    value={name}
-                    onChangeText={setName}
-                    className="bg-secondary/50 border border-border rounded-lg px-4 py-3 text-foreground"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-
-                {/* Campo Email */}
-                <View className="space-y-2">
-                  <Text className="text-foreground text-sm font-medium">Email</Text>
-                  <TextInput
-                    placeholder="tu@email.com"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    className="bg-secondary/50 border border-border rounded-lg px-4 py-3 text-foreground"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-
-                {/* Campo Contraseña */}
-                <View className="space-y-2">
-                  <Text className="text-foreground text-sm font-medium">Contraseña</Text>
-                  <View className="relative">
-                    <TextInput
-                      placeholder="••••••••"
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry={!showPassword}
-                      className="bg-secondary/50 border border-border rounded-lg px-4 py-3 pr-10 text-foreground"
-                      placeholderTextColor="#9ca3af"
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
-                    >
-                      {showPassword ? (
-                        <EyeOff size={16} color="#6b7280" />
-                      ) : (
-                        <Eye size={16} color="#6b7280" />
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Campo Confirmar Contraseña */}
-                <View className="space-y-2">
-                  <Text className="text-foreground text-sm font-medium">
-                    Confirmar Contraseña
-                  </Text>
-                  <TextInput
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry={!showPassword}
-                    className="bg-secondary/50 border border-border rounded-lg px-4 py-3 text-foreground"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-
-                {error && (
-                  <Text className="text-destructive text-sm text-center">{error}</Text>
-                )}
-
-                {/* Botón de registro */}
-                <TouchableOpacity onPress={handleSubmit} disabled={isLoading}>
-                  <LinearGradient
-                    colors={['#3b82f6', '#a855f7']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    className="rounded-lg py-3 items-center"
-                  >
-                    {isLoading ? (
-                      <View className="flex-row items-center justify-center">
-                        <ActivityIndicator size="small" color="white" />
-                        <Text className="ml-2 text-white font-medium">
-                          Creando cuenta...
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text className="text-white font-medium">Crear Cuenta</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-
-              {/* Enlace a Login */}
-              <View className="mt-6 pt-6 border-t border-border items-center">
-                <Text className="text-sm text-muted-foreground">
-                  ¿Ya tienes cuenta?{' '}
-                  <Text
-                    onPress={() => navigation.navigate('Login' as never)}
-                    className="text-primary font-medium"
-                  >
-                    Iniciar Sesión
-                  </Text>
-                </Text>
-              </View>
-            </BlurView>
+              <Text className="text-sm text-muted-foreground">
+                ¿Ya tienes cuenta? <Text className="text-primary font-semibold">Inicia sesión</Text>
+              </Text>
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );
-};
-
-export default RegisterScreen;
+}
